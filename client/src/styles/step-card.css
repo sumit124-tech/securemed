@@ -1,0 +1,46 @@
+.step-card {
+  position: relative;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: 24px;
+  transition: transform .25s ease-out, box-shadow .25s ease-out,
+              border-color .25s ease-out, background-color .25s ease-out;
+}
+.step-card::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 16px; bottom: 16px;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  background: linear-gradient(#2563EB, #0EA5A4);
+  transform: scaleY(0);
+  transition: transform .25s ease-out;
+}
+.step-number { transition: transform .25s, background-color .25s, color .25s; }
+.step-icon   { transition: transform .25s, color .25s; }
+.step-title  { transition: color .25s; }
+.step-desc   { color: var(--text-secondary); transition: color .25s; }
+
+@media (hover: hover) {
+  .step-card:hover,
+  .step-card:focus-within {
+    transform: translateY(-6px);
+    box-shadow: 0 12px 32px rgba(37,99,235,.15);
+    border-color: rgba(37,99,235,.45);
+    background: #F8FBFF;
+  }
+  .step-card:hover::before,
+  .step-card:focus-within::before { transform: scaleY(1); }
+  .step-card:hover .step-number,
+  .step-card:focus-within .step-number { background: #2563EB !important; color: #fff !important; transform: scale(1.1); }
+  .step-card:hover .step-icon,
+  .step-card:focus-within .step-icon   { color: #0EA5A4 !important; transform: translateY(-2px); }
+  .step-card:hover .step-title,
+  .step-card:focus-within .step-title  { color: #2563EB !important; }
+  .step-card:hover .step-desc,
+  .step-card:focus-within .step-desc   { color: #0F172A !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .step-card, .step-card *, .step-card::before { transition: none; transform: none !important; }
+}

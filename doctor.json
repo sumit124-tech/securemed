@@ -1,0 +1,9 @@
+{
+  "email": "doctor_curl@test.com",
+  "password": "Secure123!",
+  "role": "DOCTOR",
+  "firstName": "Jane",
+  "lastName": "Smith",
+  "specialization": "Cardiology",
+  "licenseNumber": "LIC123"
+}

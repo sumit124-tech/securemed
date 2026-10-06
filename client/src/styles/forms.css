@@ -1,0 +1,337 @@
+/* Form Inputs */
+.form-group {
+  margin-bottom: 1.25rem;
+  position: relative;
+}
+
+.form-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 8px;
+}
+
+.field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-icon-leading {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  color: #94A3B8;
+  transition: color 200ms ease;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.input-icon-trailing {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  color: #94A3B8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+
+.input-icon-trailing button {
+  background: none;
+  border: none;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  color: inherit;
+  transition: color 200ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.input-icon-trailing button:hover {
+  color: #2563EB;
+}
+
+.form-control {
+  width: 100%;
+  height: 48px;
+  background: #ffffff;
+  border: 1px solid #CBD5E1;
+  border-radius: 12px;
+  font-size: 1rem;
+  color: #0F172A;
+  transition: border-color 200ms ease, box-shadow 200ms ease, background-color 200ms ease;
+}
+
+/* Specificity fix for padding */
+.field input.form-control {
+  box-sizing: border-box;
+  width: 100%;
+  padding-left: 44px !important;
+}
+.field input.form-control[type="password"] {
+  padding-right: 44px !important;
+}
+
+/* Hide native date picker icon to use our custom one */
+.field input[type="date"].form-control::-webkit-calendar-picker-indicator {
+  display: none;
+  -webkit-appearance: none;
+}
+
+.form-control::placeholder {
+  color: #94A3B8;
+}
+
+@media (hover: hover) {
+  .form-control:hover:not(:disabled) {
+    border-color: #93C5FD;
+    background-color: #FCFDFF;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
+  }
+  .field:hover .input-icon-leading {
+    color: #2563EB;
+  }
+}
+
+.form-control:focus, .form-control:focus-visible {
+  outline: none;
+  border-color: #2563EB;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+  background-color: #ffffff;
+}
+
+.form-control:focus ~ .input-icon-leading,
+.form-control:focus-visible ~ .input-icon-leading {
+  color: #2563EB;
+}
+
+/* Valid state (Custom class .is-valid) */
+.form-control.is-valid {
+  border-color: #86EFAC;
+}
+.form-control.is-valid ~ .input-icon-leading {
+  color: #10B981;
+}
+
+/* Invalid state */
+.form-control[aria-invalid="true"] {
+  border-color: #DC2626;
+}
+.form-control[aria-invalid="true"]:focus,
+.form-control[aria-invalid="true"]:focus-visible {
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.12);
+}
+.form-control[aria-invalid="true"] ~ .input-icon-leading {
+  color: #DC2626;
+}
+
+.form-error {
+  display: block;
+  color: #DC2626;
+  font-size: 13px;
+  margin-top: 6px;
+  font-weight: 500;
+}
+
+.form-control:disabled {
+  background-color: #F1F5F9;
+  color: #94A3B8;
+  cursor: not-allowed;
+  border-color: #E2E8F0;
+}
+
+/* Submit Button */
+.btn-submit {
+  width: 100%;
+  height: 48px;
+  background: #2563EB;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background-color 200ms ease, transform 200ms ease, box-shadow 200ms ease;
+}
+
+@media (hover: hover) {
+  .btn-submit:hover:not(:disabled) {
+    background-color: #1D4ED8;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.3);
+  }
+}
+
+.btn-submit:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Links */
+.auth-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  position: relative;
+  transition: color 200ms ease;
+  font-weight: 500;
+}
+
+.auth-link:hover, .auth-link:focus-visible {
+  color: #1D4ED8;
+}
+
+.auth-link::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  height: 2px;
+  width: 100%;
+  background: #1D4ED8;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 200ms ease;
+}
+
+.auth-link:hover::after, .auth-link:focus-visible::after {
+  transform: scaleX(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .form-control, .btn-submit, .auth-link, .auth-link::after { transition: none; transform: none !important; }
+}
+
+/* Role Selector (Radio Group) */
+.role-selector {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.role-radio {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.role-label {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  background: #ffffff;
+  border: 2px solid #E5EAF1;
+  border-radius: 12px;
+  cursor: pointer;
+  color: #475569;
+  font-weight: 600;
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease, background-color 200ms ease, color 200ms ease;
+}
+
+.role-label-icon {
+  transition: transform 200ms ease, color 200ms ease;
+}
+
+@media (hover: hover) {
+  .role-label:hover {
+    transform: translateY(-3px);
+    border-color: #93C5FD;
+    background-color: #F5F9FF;
+    color: #2563EB;
+  }
+  .role-label:hover .role-label-icon {
+    transform: scale(1.1);
+  }
+}
+
+.role-radio:focus-visible + .role-label {
+  outline: 2px solid #2563EB;
+  outline-offset: 4px;
+}
+
+.role-radio:checked + .role-label {
+  border-color: #2563EB;
+  background-color: #EFF6FF;
+  color: #1D4ED8;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+}
+
+.role-radio:checked + .role-label .role-label-icon {
+  color: #2563EB;
+}
+
+.role-check-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #2563EB;
+  color: white;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: scale(0.5);
+  transition: all 200ms ease;
+  box-shadow: 0 2px 4px rgba(37,99,235,0.3);
+}
+
+.role-radio:checked + .role-label .role-check-badge {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Password Strength */
+.password-strength-meter {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.strength-bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background-color: #E2E8F0;
+  transition: background-color 300ms ease;
+}
+
+.strength-text {
+  font-size: 12px;
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+.strength-weak { color: #EF4444; }
+.strength-medium { color: #F59E0B; }
+.strength-strong { color: #10B981; }
+
+.strength-bar.weak { background-color: #EF4444; }
+.strength-bar.medium { background-color: #F59E0B; }
+.strength-bar.strong { background-color: #10B981; }

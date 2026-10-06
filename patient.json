@@ -1,0 +1,8 @@
+{
+  "email": "patient_curl@test.com",
+  "password": "Secure123!",
+  "role": "PATIENT",
+  "firstName": "John",
+  "lastName": "Doe",
+  "dob": "1990-01-01"
+}

@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 220" width="720" height="220" fill="none">
+  <defs>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+    <linearGradient id="accentTeal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0EA5E9"/>
+      <stop offset="100%" stop-color="#0284C7"/>
+    </linearGradient>
+    <filter id="subtleShadow" x="-10%" y="-10%" width="120%" height="120%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#1E3A8A" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <g transform="translate(30, 26)" filter="url(#subtleShadow)">
+    <path d="M84 4 C122 4, 156 18, 156 50 C156 112, 102 148, 84 160 C66 148, 12 112, 12 50 C12 18, 46 4, 84 4 Z" 
+          fill="url(#shieldGrad)"/>
+    <path d="M84 16 C114 16, 142 27, 142 53 C142 103, 98 135, 84 146 C70 135, 26 103, 26 53 C26 27, 54 16, 84 16 Z" 
+          stroke="#60A5FA" stroke-width="2.5" stroke-opacity="0.4" fill="none"/>
+    <circle cx="84" cy="24" r="3.5" fill="#93C5FD"/>
+    <circle cx="134" cy="54" r="3.5" fill="#93C5FD"/>
+    <circle cx="34" cy="54" r="3.5" fill="#93C5FD"/>
+    <circle cx="84" cy="138" r="3.5" fill="#93C5FD"/>
+    <path d="M84 48 V108 M54 78 H114" 
+          stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="76.5" y="70.5" width="15" height="15" rx="3.5" fill="url(#accentTeal)" stroke="#FFFFFF" stroke-width="2"/>
+  </g>
+
+  <g transform="translate(225, 102)">
+    <text x="0" y="0" font-family="'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="56" font-weight="800" fill="#0F172A" letter-spacing="-1.2">
+      Secure<tspan fill="#2563EB">Med</tspan>
+    </text>
+    <g transform="translate(324, -40)">
+      <rect width="84" height="24" rx="6" fill="#EFF6FF" stroke="#BFDBFE" stroke-width="1"/>
+      <circle cx="12" cy="12" r="3.5" fill="#10B981"/>
+      <text x="22" y="16" font-family="'Plus Jakarta Sans', sans-serif" font-size="10.5" font-weight="700" fill="#1E40AF" letter-spacing="0.8">SECURE</text>
+    </g>
+    <text x="2" y="32" font-family="'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14.5" font-weight="600" fill="#475569" letter-spacing="0.6">
+      SECURE MEDICAL RECORD MANAGEMENT SYSTEM
+    </text>
+    <text x="2" y="54" font-family="'Plus Jakarta Sans', monospace, sans-serif" font-size="11.5" font-weight="500" fill="#94A3B8" letter-spacing="0.2">
+      Zero-Knowledge Access Control • Immutable On-Chain Hash Integrity
+    </text>
+  </g>
+</svg>
