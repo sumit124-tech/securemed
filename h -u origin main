@@ -1,0 +1,5 @@
+[35m.env.example[m[36m:[m[32m15[m[36m:[mSYSTEM_WALLET_[1;31mPRIVATE_KEY[m=your_hardhat_test_account_[1;31mprivate_key[m_here
+[35mserver/services/blockchainService.js[m[36m:[m[32m13[m[36m:[mlet [1;31mPRIVATE_KEY[m = process.env.SYSTEM_WALLET_[1;31mPRIVATE_KEY[m;
+[35mserver/services/blockchainService.js[m[36m:[m[32m14[m[36m:[mif (![1;31mPRIVATE_KEY[m || [1;31mPRIVATE_KEY[m === 'your_hardhat_test_account_[1;31mprivate_key[m_here') {
+[35mserver/services/blockchainService.js[m[36m:[m[32m15[m[36m:[m  [1;31mPRIVATE_KEY[m = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+[35mserver/services/blockchainService.js[m[36m:[m[32m40[m[36m:[m    this.wallet = new ethers.Wallet([1;31mPRIVATE_KEY[m, this.provider);

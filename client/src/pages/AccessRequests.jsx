@@ -32,7 +32,6 @@ const AccessRequests = () => {
   };
 
   const handleAccessResponse = async (requestId, status) => {
-    if(status === 'REJECTED' && !window.confirm('Are you sure you want to reject this request?')) return;
     try {
       await respondToAccess(requestId, status);
       fetchRequests();
@@ -42,7 +41,6 @@ const AccessRequests = () => {
   };
 
   const handleRevoke = async (doctorId) => {
-    if(!window.confirm('Are you sure you want to revoke access for this provider?')) return;
     try {
       await revokeAccess(doctorId);
       fetchRequests();
@@ -88,29 +86,48 @@ const AccessRequests = () => {
                   No pending access requests.
                 </div>
               ) : (
-                <div className="table-container">
-                  <table>
+                <div className="table-container" style={{ overflowX: 'auto' }}>
+                  <table style={{ minWidth: '640px' }}>
                     <thead>
                       <tr>
                         <th>Doctor</th>
+                        <th>Specialization</th>
+                        <th>Status</th>
                         <th>Date Requested</th>
-                        <th style={{ textAlign: 'right' }}>Actions</th>
+                        <th style={{ textAlign: 'right', width: '120px' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {pendingRequests.map(req => (
-                        <tr key={req?._id}>
+                        <tr key={req?._id} className="responsive-row">
+                          <td title={req?.doctor?._id || req?.doctor}>
+                            <div style={{ fontWeight: 500 }}>
+                              {req?.firstName ? `Dr. ${req.firstName} ${req.lastName}` : `Doctor ID: ${req?.doctor?._id || req?.doctor}`}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                              {req?.email || req?.doctor?.email}
+                            </div>
+                            {req?.licenseNumber && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Lic: {req.licenseNumber}</div>}
+                          </td>
+                          <td>{req?.specialization || 'N/A'}</td>
                           <td>
-                            <div style={{ fontWeight: 500 }}>Doctor ID: {req?.doctor?._id || req?.doctor}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{req?.doctor?.email}</div>
+                            {req?.isVerified && <span className="badge badge-success">Verified</span>}
                           </td>
                           <td>{new Date(req?.requestedAt || Date.now()).toLocaleDateString()}</td>
                           <td style={{ textAlign: 'right' }}>
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                              <button onClick={() => handleAccessResponse(req?._id, 'APPROVED')} className="btn btn-success" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
+                              <button onClick={() => {
+                                if (window.confirm(`Approve access for Dr. ${req.lastName || 'Doctor'}?`)) {
+                                  handleAccessResponse(req?._id, 'APPROVED');
+                                }
+                              }} className="btn btn-success" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
                                 Approve
                               </button>
-                              <button onClick={() => handleAccessResponse(req?._id, 'REJECTED')} className="btn btn-outline" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
+                              <button onClick={() => {
+                                if (window.confirm(`Reject access for Dr. ${req.lastName || 'Doctor'}?`)) {
+                                  handleAccessResponse(req?._id, 'REJECTED');
+                                }
+                              }} className="btn btn-outline" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
                                 Reject
                               </button>
                             </div>
@@ -134,25 +151,40 @@ const AccessRequests = () => {
                   You have not granted access to any doctors.
                 </div>
               ) : (
-                <div className="table-container">
-                  <table>
+                <div className="table-container" style={{ overflowX: 'auto' }}>
+                  <table style={{ minWidth: '640px' }}>
                     <thead>
                       <tr>
                         <th>Doctor</th>
+                        <th>Specialization</th>
+                        <th>Status</th>
                         <th>Access Granted On</th>
-                        <th style={{ textAlign: 'right' }}>Actions</th>
+                        <th style={{ textAlign: 'right', width: '120px' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {authorizedDoctors.map(req => (
-                        <tr key={req?._id}>
+                        <tr key={req?._id} className="responsive-row">
+                          <td title={req?.doctor?._id || req?.doctor}>
+                            <div style={{ fontWeight: 500 }}>
+                              {req?.firstName ? `Dr. ${req.firstName} ${req.lastName}` : `Doctor ID: ${req?.doctor?._id || req?.doctor}`}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                              {req?.email || req?.doctor?.email}
+                            </div>
+                            {req?.licenseNumber && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Lic: {req.licenseNumber}</div>}
+                          </td>
+                          <td>{req?.specialization || 'N/A'}</td>
                           <td>
-                            <div style={{ fontWeight: 500 }}>Doctor ID: {req?.doctor?._id || req?.doctor}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{req?.doctor?.email}</div>
+                            {req?.isVerified && <span className="badge badge-success">Verified</span>}
                           </td>
                           <td>{new Date(req?.respondedAt).toLocaleDateString()}</td>
                           <td style={{ textAlign: 'right' }}>
-                            <button onClick={() => handleRevoke(req?.doctor?._id || req?.doctor)} className="btn btn-danger" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
+                            <button onClick={() => {
+                              if (window.confirm(`Revoke Dr. ${req.lastName || 'Doctor'}'s access? They will no longer be able to view your records.`)) {
+                                handleRevoke(req?.doctor?._id || req?.doctor);
+                              }
+                            }} className="btn btn-danger" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
                               Revoke Access
                             </button>
                           </td>

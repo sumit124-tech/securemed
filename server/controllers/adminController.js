@@ -2,6 +2,7 @@ import User from '../models/User.js';
 import DoctorProfile from '../models/DoctorProfile.js';
 import Notification from '../models/Notification.js';
 import AuditLog from '../models/AuditLog.js';
+import { logAudit } from '../utils/auditHelper.js';
 
 export const getUnverifiedDoctors = async (req, res) => {
   try {
@@ -22,12 +23,12 @@ export const verifyDoctor = async (req, res) => {
     doctorProfile.isVerified = true;
     await doctorProfile.save();
 
-    await AuditLog.create({
+    await logAudit(req, {
       actor: req.user._id,
       role: req.user.role,
       action: 'VERIFY_DOCTOR',
       resourceType: 'DoctorProfile',
-      details: `Admin verified doctor ${doctorProfile.user.email}`
+      resourceId: doctorProfile._id
     });
 
     await Notification.create({
@@ -53,12 +54,12 @@ export const rejectDoctor = async (req, res) => {
     doctorProfile.isVerified = false;
     await doctorProfile.save();
 
-    await AuditLog.create({
+    await logAudit(req, {
       actor: req.user._id,
       role: req.user.role,
       action: 'REJECT_DOCTOR',
       resourceType: 'DoctorProfile',
-      details: `Admin rejected doctor ${doctorProfile.user.email}`
+      resourceId: doctorProfile._id
     });
 
     await Notification.create({

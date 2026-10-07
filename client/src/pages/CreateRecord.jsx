@@ -16,7 +16,9 @@ const CreateRecord = () => {
     prescription: ''
   });
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({});
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -25,15 +27,49 @@ const CreateRecord = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    
+    const errors = {};
+    if (!formData.symptoms.trim()) errors.symptoms = 'Symptoms are required';
+    if (!formData.diagnosis.trim()) errors.diagnosis = 'Diagnosis is required';
+    if (!formData.treatment.trim()) errors.treatment = 'Treatment plan is required';
+    if (!formData.prescription.trim()) errors.prescription = 'Prescription is required';
+    
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
+    
+    setValidationErrors({});
     setIsLoading(true);
 
     try {
-      await createRecord(formData);
-      navigate('/doctor-dashboard');
+      const res = await createRecord(formData);
+      // createRecord returns the response data directly because of how the API client handles it, or wait, createRecord is a wrapper.
+      // Let's assume createRecord returns the data or response. We'll use res directly.
+      const data = res.data || res;
+      const hash = data.currentHash ? data.currentHash.substring(0, 10) : 'N/A';
+      const tx = data.blockchainTxHash ? data.blockchainTxHash.substring(0, 10) : 'N/A';
+      
+      setSuccess({
+        message: 'Record created and anchored on blockchain',
+        hash,
+        tx
+      });
+      
+      setTimeout(() => {
+        navigate('/doctor/patients');
+      }, 3000);
+      
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to author medical record on network');
+      setError(err.response?.data?.message || err.message || 'Failed to author medical record on network');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDiscard = (e) => {
+    if (!window.confirm('Are you sure you want to discard this draft?')) {
+      e.preventDefault();
     }
   };
 
@@ -50,6 +86,14 @@ const CreateRecord = () => {
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
+      
+      {success && (
+        <div className="alert alert-success" style={{ marginBottom: '2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <strong>{success.message}</strong>
+          <span style={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>Hash: {success.hash}...</span>
+          <span style={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>TX: {success.tx}...</span>
+        </div>
+      )}
 
       <div className="card" style={{ maxWidth: '900px', margin: '0 auto' }}>
         <div className="card-header" style={{ background: 'var(--bg-main)' }}>
@@ -75,12 +119,13 @@ const CreateRecord = () => {
               <textarea 
                 name="symptoms" 
                 required 
-                className="form-control" 
+                className={`form-control ${validationErrors.symptoms ? 'is-invalid' : ''}`}
                 rows="3"
                 placeholder="Patient presents with..."
                 value={formData.symptoms} 
                 onChange={handleChange}
               ></textarea>
+              {validationErrors.symptoms && <span style={{ color: 'var(--danger)', fontSize: '0.75rem' }}>{validationErrors.symptoms}</span>}
             </div>
             
             <div className="form-group" style={{ marginBottom: '2rem' }}>
@@ -89,11 +134,12 @@ const CreateRecord = () => {
                 type="text" 
                 name="diagnosis" 
                 required 
-                className="form-control"
+                className={`form-control ${validationErrors.diagnosis ? 'is-invalid' : ''}`}
                 placeholder="e.g. Acute Bronchitis"
                 value={formData.diagnosis} 
                 onChange={handleChange}
               />
+              {validationErrors.diagnosis && <span style={{ color: 'var(--danger)', fontSize: '0.75rem' }}>{validationErrors.diagnosis}</span>}
             </div>
 
             <h4 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: 'var(--text-main)', borderTop: '1px solid var(--border-light)', paddingTop: '1.5rem' }}>
@@ -104,35 +150,39 @@ const CreateRecord = () => {
               <label className="form-label">Recommended Treatment Plan</label>
               <textarea 
                 name="treatment" 
-                className="form-control" 
+                required
+                className={`form-control ${validationErrors.treatment ? 'is-invalid' : ''}`}
                 rows="4"
                 placeholder="Outline the steps for care..."
                 value={formData.treatment} 
                 onChange={handleChange}
               ></textarea>
+              {validationErrors.treatment && <span style={{ color: 'var(--danger)', fontSize: '0.75rem' }}>{validationErrors.treatment}</span>}
             </div>
             
             <div className="form-group" style={{ marginBottom: '2rem' }}>
               <label className="form-label">Prescriptions / Medications</label>
               <textarea 
-                name="prescription" 
-                className="form-control" 
+                name="prescription"
+                required
+                className={`form-control ${validationErrors.prescription ? 'is-invalid' : ''}`}
                 rows="2"
                 placeholder="Medication, Dosage, Frequency..."
                 value={formData.prescription} 
                 onChange={handleChange}
               ></textarea>
+              {validationErrors.prescription && <span style={{ color: 'var(--danger)', fontSize: '0.75rem' }}>{validationErrors.prescription}</span>}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', borderTop: '1px solid var(--border-light)', paddingTop: '1.5rem' }}>
-              <Link to="/doctor-dashboard" className="btn btn-outline">
+              <Link to="/doctor-dashboard" className="btn btn-outline" onClick={handleDiscard}>
                 Discard Draft
               </Link>
-              <button type="submit" className="btn btn-primary" disabled={isLoading}>
+              <button type="submit" className="btn btn-primary" disabled={isLoading || success}>
                 {isLoading ? (
                   <>
                     <div className="loading-spinner" style={{ width: '16px', height: '16px', borderWidth: '2px', borderColor: 'rgba(255,255,255,0.3)', borderTopColor: 'white' }}></div>
-                    Saving Record...
+                    Saving to blockchain...
                   </>
                 ) : (
                   <>

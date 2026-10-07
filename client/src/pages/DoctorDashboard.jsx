@@ -4,7 +4,7 @@ import { requestAccess } from '../api/access';
 import { getPatientRecords } from '../api/records';
 import { Search, Users, ShieldAlert, FileText, Activity, AlertTriangle, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
+import api from '../api/axios';
 
 const DoctorDashboard = () => {
   const { user, profile, refreshUser } = useAuth();
@@ -32,14 +32,14 @@ const DoctorDashboard = () => {
       setStatsError(false);
       const token = localStorage.getItem('token');
       const [statsRes, requestsRes] = await Promise.all([
-        axios.get('/api/doctor/stats', { headers: { Authorization: `Bearer ${token}` } }).catch(() => ({ data: {} })),
-        axios.get('/api/doctor/requests', { headers: { Authorization: `Bearer ${token}` } }).catch(() => ({ data: [] }))
+        api.get('/doctor/stats'),
+        api.get('/doctor/requests')
       ]);
       setStats(statsRes.data);
       setSentRequests(toArray(requestsRes).slice(0, 5)); // show latest 5
     } catch (err) {
       console.error('Failed to fetch doctor stats', err);
-      setStatsError(true);
+      setStatsError(err.response?.data?.message || 'Failed to load dashboard data');
     } finally {
       setLoadingStats(false);
     }
@@ -278,8 +278,8 @@ const DoctorDashboard = () => {
                     <tbody>
                       {sentRequests.map(req => (
                         <tr key={req?._id}>
-                          <td style={{ fontSize: '0.75rem', maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {req?.patient?._id || req?.patient}
+                          <td style={{ fontSize: '0.75rem', maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={req?.patient?._id || req?.patient}>
+                            {req?.firstName ? `${req.firstName} ${req.lastName}` : (req?.patient?._id || req?.patient)}
                           </td>
                           <td style={{ textAlign: 'right' }}>
                             <span className={getStatusBadgeClass(req?.status)} style={{ fontSize: '0.65rem' }}>

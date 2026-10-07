@@ -1,44 +1,30 @@
+import mongoose from 'mongoose';
+import dotenv from 'dotenv';
+import path from 'path';
 
-const test = async () => {
+dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
+
+const url = 'http://localhost:5000';
+
+const run = async () => {
   try {
-    let token;
-    let loginRes = await fetch('http://localhost:5000/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'testdr2@securemed.com', password: 'Password123!' })
-    });
+    await mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/smrs');
+    const { default: User } = await import('../models/User.js');
+    const { default: DoctorProfile } = await import('../models/DoctorProfile.js');
+    const { default: AccessRequest } = await import('../models/AccessRequest.js');
     
-    if (!loginRes.ok) {
-      let regRes = await fetch('http://localhost:5000/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: 'testdr2@securemed.com',
-          password: 'Password123!',
-          role: 'DOCTOR',
-          firstName: 'Test',
-          lastName: 'Dr',
-          licenseNumber: 'MD12345',
-          specialty: 'General'
-        })
-      });
-      const data = await regRes.json();
-      token = data.token;
-    } else {
-      const data = await loginRes.json();
-      token = data.token;
+    const reqs = await AccessRequest.find();
+    console.log("Total requests:", reqs.length);
+    for (const r of reqs) {
+       const u = await User.findById(r.doctor);
+       const p = await DoctorProfile.findById(r.doctor);
+       console.log(`Req ${r._id}: doctor=${r.doctor} isUser=${!!u} isProfile=${!!p}`);
     }
     
-    if (!token) console.log('NO TOKEN');
-
-    const res = await fetch('http://localhost:5000/api/doctor/patients', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    console.log('STATUS:', res.status);
-    console.log('BODY:', await res.text());
   } catch (err) {
-    console.log(err.message);
+    console.error(err);
+  } finally {
+    process.exit();
   }
 };
-
-test();
+run();

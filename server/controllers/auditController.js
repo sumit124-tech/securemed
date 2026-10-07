@@ -18,17 +18,74 @@ export const getMyAuditLogs = async (req, res) => {
       filter = { actor: userId };
     }
 
-    // But wait, the prompt asks for "events on that patient's records for patients".
-    // Let's update `AuditLog.js` to optionally store `relatedPatient: ObjectId`.
-    // Wait, the prompt says "DO NOT modify... ah wait, that was for the AUDIT ONLY step."
-    // Now I am IN IMPLEMENTATION MODE.
+    // Optional server-side filters for date range and pagination
+    const { startDate, endDate, page = 1, limit = 20, action } = req.query;
+    
+    if (startDate || endDate) {
+      filter.timestamp = {};
+      if (startDate) filter.timestamp.$gte = new Date(startDate);
+      if (endDate) filter.timestamp.$lte = new Date(endDate);
+    }
+    if (action && action !== 'ALL') {
+      filter.action = action;
+    }
 
+    const skip = (page - 1) * limit;
+
+    const totalLogs = await AuditLog.countDocuments(filter);
     const logs = await AuditLog.find(filter)
-      .populate('actor', 'firstName lastName role email')
+      .populate('actor', 'role email')
       .sort({ timestamp: -1 })
-      .limit(100);
+      .skip(skip)
+      .limit(parseInt(limit));
 
-    res.json(logs);
+    const { default: AccessRequest } = await import('../models/AccessRequest.js');
+    const { default: PatientProfile } = await import('../models/PatientProfile.js');
+    const { default: DoctorProfile } = await import('../models/DoctorProfile.js');
+    
+    // Pre-fetch access requests for doctor to check visibility
+    let activeDoctorAccess = [];
+    if (req.user.role === 'DOCTOR') {
+      const requests = await AccessRequest.find({ doctor: userId, status: 'APPROVED' });
+      activeDoctorAccess = requests.map(r => r.patient.toString());
+    }
+
+    const populatedLogs = [];
+    for (const log of logs) {
+      const logObj = log.toObject();
+      if (log.actor) {
+        let profile = null;
+        if (log.actor.role === 'PATIENT') profile = await PatientProfile.findOne({ user: log.actor._id });
+        if (log.actor.role === 'DOCTOR') profile = await DoctorProfile.findOne({ user: log.actor._id });
+        
+        if (profile) {
+          logObj.actorName = log.actor.role === 'DOCTOR' ? `Dr. ${profile.firstName} ${profile.lastName}` : `${profile.firstName} ${profile.lastName}`;
+        }
+      }
+      
+      // Determine if resource is clickable
+      logObj.isAccessible = false;
+      if (req.user.role === 'PATIENT') {
+        // Patient can access their own records
+        if (logObj.relatedPatient && logObj.relatedPatient.toString() === userId.toString()) {
+          logObj.isAccessible = true;
+        }
+      } else if (req.user.role === 'DOCTOR') {
+        // Doctor can access if they have approved access
+        if (logObj.relatedPatient && activeDoctorAccess.includes(logObj.relatedPatient.toString())) {
+          logObj.isAccessible = true;
+        }
+      }
+      
+      populatedLogs.push(logObj);
+    }
+
+    res.json({
+      logs: populatedLogs,
+      totalPages: Math.ceil(totalLogs / limit),
+      currentPage: parseInt(page),
+      totalLogs
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

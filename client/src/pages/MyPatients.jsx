@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { requestAccess } from '../api/access';
-import axios from 'axios';
+import api from '../api/axios';
 import { Users, FilePlus, Search, UserPlus, FileText } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -28,12 +28,14 @@ const MyPatients = () => {
       setLoading(true);
       setError('');
       const token = localStorage.getItem('token');
-      const res = await axios.get('/api/doctor/patients', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get('/doctor/patients');
       setPatients(toArray(res));
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to fetch patients.');
+      setError(
+        err.response 
+          ? `Error ${err.response.status}: ${err.response.data?.message || err.message}`
+          : 'Cannot reach server'
+      );
     } finally {
       setLoading(false);
     }
@@ -94,12 +96,7 @@ const MyPatients = () => {
         </div>
       </div>
 
-      {error && (
-        <div className="alert alert-error" style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>{error}</span>
-          <button onClick={fetchPatients} className="btn btn-sm btn-outline">Retry</button>
-        </div>
-      )}
+
 
       <div className="card">
         <div className="card-header">
@@ -108,6 +105,11 @@ const MyPatients = () => {
         <div className="card-body" style={{ padding: 0 }}>
           {loading ? (
             <div className="loading-container"><div className="loading-spinner"></div></div>
+          ) : error ? (
+            <div style={{ padding: '2rem', textAlign: 'center' }}>
+              <p style={{ color: 'var(--danger)', marginBottom: '1rem' }}>{error}</p>
+              <button onClick={fetchPatients} className="btn btn-primary">Retry</button>
+            </div>
           ) : patients.length === 0 ? (
             <div className="empty-state">
               <Users size={48} className="empty-state-icon" />
@@ -115,22 +117,24 @@ const MyPatients = () => {
               <p>Request access using a Patient ID.</p>
             </div>
           ) : (
-            <div className="table-container">
-              <table>
+            <div className="table-container" style={{ overflowX: 'auto' }}>
+              <table style={{ minWidth: '640px' }}>
                 <thead>
                   <tr>
-                    <th>Patient ID / Email</th>
+                    <th>Patient</th>
                     <th>Access Granted On</th>
                     <th>Last Record Date</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
+                    <th style={{ textAlign: 'right', width: '250px' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {patients.map(patient => (
-                    <tr key={patient.patientId}>
-                      <td>
+                    <tr key={patient.patientId} className="responsive-row">
+                      <td title={patient.patientId}>
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span style={{ fontWeight: 500 }}>{patient.patientId}</span>
+                          <span style={{ fontWeight: 500 }}>
+                            {patient.firstName ? `${patient.firstName} ${patient.lastName}` : `Patient ID: ${patient.patientId}`}
+                          </span>
                           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{patient.email}</span>
                         </div>
                       </td>

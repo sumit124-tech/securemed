@@ -1,5 +1,6 @@
 import AccessRequest from '../models/AccessRequest.js';
 import AuditLog from '../models/AuditLog.js';
+import { logAudit } from '../utils/auditHelper.js';
 import DoctorProfile from '../models/DoctorProfile.js';
 import Notification from '../models/Notification.js';
 
@@ -28,7 +29,7 @@ export const requestAccess = async (req, res) => {
       existingRequest.requestedAt = Date.now();
       await existingRequest.save();
       
-      await AuditLog.create({ actor: doctorId, role: 'DOCTOR', action: 'RE_REQUEST_ACCESS', resourceType: 'AccessRequest', resourceId: existingRequest._id, relatedPatient: patientId });
+      await logAudit(req, { actor: doctorId, role: 'DOCTOR', action: 'RE_REQUEST_ACCESS', resourceType: 'AccessRequest', resourceId: existingRequest._id, relatedPatient: patientId });
       
       await Notification.create({ user: patientId, type: 'ACCESS_REQUEST', message: 'A doctor has requested access to your records.', relatedId: existingRequest._id });
       
@@ -37,7 +38,7 @@ export const requestAccess = async (req, res) => {
 
     // 3. Create new request
     const newRequest = await AccessRequest.create({ patient: patientId, doctor: doctorId });
-    await AuditLog.create({ actor: doctorId, role: 'DOCTOR', action: 'REQUEST_ACCESS', resourceType: 'AccessRequest', resourceId: newRequest._id, relatedPatient: patientId });
+    await logAudit(req, { actor: doctorId, role: 'DOCTOR', action: 'REQUEST_ACCESS', resourceType: 'AccessRequest', resourceId: newRequest._id, relatedPatient: patientId });
 
     await Notification.create({ user: patientId, type: 'ACCESS_REQUEST', message: 'A doctor has requested access to your records.', relatedId: newRequest._id });
 
@@ -70,7 +71,7 @@ export const respondToRequest = async (req, res) => {
     request.respondedAt = Date.now();
     await request.save();
 
-    await AuditLog.create({ actor: req.user._id, role: 'PATIENT', action: `ACCESS_${status}`, resourceType: 'AccessRequest', resourceId: request._id, relatedPatient: req.user._id });
+    await logAudit(req, { actor: req.user._id, role: 'PATIENT', action: `ACCESS_${status}`, resourceType: 'AccessRequest', resourceId: request._id, relatedPatient: req.user._id });
 
     await Notification.create({ user: request.doctor, type: `ACCESS_${status}`, message: `Your access request was ${status.toLowerCase()}.`, relatedId: request._id });
 
@@ -92,7 +93,7 @@ export const revokeAccess = async (req, res) => {
     request.respondedAt = Date.now();
     await request.save();
 
-    await AuditLog.create({ actor: req.user._id, role: 'PATIENT', action: 'ACCESS_REVOKED', resourceType: 'AccessRequest', resourceId: request._id, relatedPatient: req.user._id });
+    await logAudit(req, { actor: req.user._id, role: 'PATIENT', action: 'ACCESS_REVOKED', resourceType: 'AccessRequest', resourceId: request._id, relatedPatient: req.user._id });
 
     await Notification.create({ user: request.doctor, type: 'ACCESS_REVOKED', message: 'Your access to a patient has been revoked.', relatedId: request._id });
 
@@ -111,8 +112,26 @@ export const getMyRequests = async (req, res) => {
       .populate('doctor', 'email role')
       .sort({ requestedAt: -1 });
     
-    // We also need doctor profile info ideally, but let's just return what we have
-    res.json(requests);
+    // Populate doctor profile info manually
+    const populatedRequests = [];
+    for (const req of requests) {
+      const docObj = req.toObject();
+      if (req.doctor && req.doctor._id) {
+        const profile = await DoctorProfile.findOne({ user: req.doctor._id });
+        if (profile) {
+          docObj.doctorProfileId = profile._id;
+          docObj.firstName = profile.firstName;
+          docObj.lastName = profile.lastName;
+          docObj.specialization = profile.specialization;
+          docObj.licenseNumber = profile.licenseNumber;
+          docObj.isVerified = profile.isVerified;
+          docObj.email = req.doctor.email;
+        }
+      }
+      populatedRequests.push(docObj);
+    }
+    
+    res.json(populatedRequests);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

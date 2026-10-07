@@ -3,6 +3,7 @@ import PatientProfile from '../models/PatientProfile.js';
 import DoctorProfile from '../models/DoctorProfile.js';
 import generateToken from '../utils/generateToken.js';
 import AuditLog from '../models/AuditLog.js';
+import { logAudit } from '../utils/auditHelper.js';
 
 // @desc    Register new user
 // @route   POST /api/auth/register
@@ -23,7 +24,7 @@ export const registerUser = async (req, res) => {
     }
 
     // Record Audit Log
-    await AuditLog.create({ actor: user._id, role, action: 'REGISTER', ipAddress: req.ip });
+    await logAudit(req, { actor: user._id, role, action: 'REGISTER' });
 
     res.status(201).json({
       _id: user._id,
@@ -46,7 +47,7 @@ export const loginUser = async (req, res) => {
     if (user && (await user.matchPassword(password))) {
       if (!user.isActive) return res.status(401).json({ message: 'Account deactivated' });
       
-      await AuditLog.create({ actor: user._id, role: user.role, action: 'LOGIN', ipAddress: req.ip });
+      await logAudit(req, { actor: user._id, role: user.role, action: 'LOGIN' });
       
       res.json({
         _id: user._id,

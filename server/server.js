@@ -29,6 +29,7 @@ if (fs.existsSync(blockchainEnvPath)) {
 }
 
 const app = express();
+app.set('trust proxy', true);
 
 // Security Headers
 app.use(helmet());
@@ -43,7 +44,8 @@ app.use(cors({
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // Limit each IP to 100 requests per `window`
-  message: { message: "Too many requests from this IP, please try again after 15 minutes" }
+  message: { message: "Too many requests from this IP, please try again after 15 minutes" },
+  validate: { trustProxy: false }
 });
 app.use('/api/auth', apiLimiter); // Apply only to auth routes as requested
 

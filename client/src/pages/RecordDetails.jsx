@@ -1,27 +1,38 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { verifyRecord } from '../api/records';
-import { ShieldCheck, ShieldAlert, FileText, Database, Key, ArrowDown, Activity, ChevronLeft, Stethoscope } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, FileText, Database, Key, ArrowDown, Activity, ChevronLeft, Stethoscope, RefreshCw } from 'lucide-react';
+import { useRef } from 'react';
 
 const RecordDetails = () => {
   const { recordId } = useParams();
   const [recordInfo, setRecordInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [verifyingManual, setVerifyingManual] = useState(false);
+  const hasFetched = useRef(false);
 
   useEffect(() => {
-    fetchRecordVerification();
+    if (!hasFetched.current) {
+      hasFetched.current = true;
+      fetchRecordVerification();
+    }
   }, [recordId]);
 
-  const fetchRecordVerification = async () => {
+  const fetchRecordVerification = async (forceLog = false) => {
     try {
-      setLoading(true);
-      const data = await verifyRecord(recordId);
+      if (forceLog) {
+        setVerifyingManual(true);
+      } else {
+        setLoading(true);
+      }
+      const data = await verifyRecord(recordId, forceLog);
       setRecordInfo(data);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to verify the integrity of the record.');
     } finally {
       setLoading(false);
+      setVerifyingManual(false);
     }
   };
 
@@ -70,27 +81,27 @@ const RecordDetails = () => {
             <div className="card-body">
               <div style={{ marginBottom: '1.5rem' }}>
                 <p className="text-muted" style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>Primary Diagnosis</p>
-                <p style={{ fontSize: '1.1rem', fontWeight: 500, color: 'var(--text-main)' }}>{data.diagnosis || recordInfo.diagnosis || 'Diagnosis information protected'}</p>
+                <p style={{ fontSize: '1.1rem', fontWeight: 500, color: 'var(--text-main)' }}>{data.diagnosis || 'Not provided'}</p>
               </div>
 
               <div style={{ marginBottom: '1.5rem' }}>
                 <p className="text-muted" style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>Symptoms & Presentation</p>
                 <p style={{ color: 'var(--text-main)', background: 'var(--bg-main)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
-                  {data.symptoms || recordInfo.symptoms || 'Data unavailable'}
+                  {data.symptoms || 'Not provided'}
                 </p>
               </div>
 
               <div style={{ marginBottom: '1.5rem' }}>
                 <p className="text-muted" style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>Treatment Plan</p>
                 <p style={{ color: 'var(--text-main)', background: 'var(--bg-main)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
-                  {data.treatment || recordInfo.treatment || 'Data unavailable'}
+                  {data.treatment || 'Not provided'}
                 </p>
               </div>
 
               <div>
                 <p className="text-muted" style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>Prescriptions</p>
                 <p style={{ color: 'var(--text-main)', background: 'var(--bg-main)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
-                  {data.prescription || recordInfo.prescription || 'No prescriptions attached'}
+                  {data.prescription || 'Not provided'}
                 </p>
               </div>
             </div>
@@ -112,10 +123,19 @@ const RecordDetails = () => {
                 : "Warning: The data in this record does not match its original fingerprint. It may have been altered."}
             </p>
 
-            <div style={{ marginBottom: '1rem' }}>
-              <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Record Fingerprint</p>
-              <div className="crypto-data">{recordInfo?.calculatedHash}</div>
+            <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', margin: 0 }}>Record Fingerprint</p>
+              <button 
+                className="btn btn-outline btn-sm" 
+                onClick={() => fetchRecordVerification(true)} 
+                disabled={verifyingManual}
+                style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+              >
+                <RefreshCw size={14} className={verifyingManual ? 'spin' : ''} style={{ marginRight: '4px' }} />
+                Verify Again
+              </button>
             </div>
+            <div className="crypto-data" style={{ marginBottom: '1rem' }}>{recordInfo?.calculatedHash}</div>
 
             <div style={{ marginBottom: '1rem' }}>
               <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Verification Reference</p>

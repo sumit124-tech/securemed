@@ -10,7 +10,8 @@ export const createRecord = async (recordData) => {
   return res.data;
 };
 
-export const verifyRecord = async (recordId) => {
-  const res = await api.get(`/records/verify/${recordId}`);
+export const verifyRecord = async (recordId, forceLog = false) => {
+  const query = forceLog ? '?forceLog=true' : '';
+  const res = await api.get(`/records/verify/${recordId}${query}`);
   return res.data;
 };
