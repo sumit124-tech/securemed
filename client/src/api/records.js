@@ -1,7 +1,8 @@
 import api from './axios';
 
-export const getPatientRecords = async (patientId) => {
-  const res = await api.get(`/records/patient/${patientId}`);
+export const getPatientRecords = async (patientId, verify = false) => {
+  const query = verify ? '?verify=true' : '';
+  const res = await api.get(`/records/patient/${patientId}${query}`);
   return res.data;
 };
 

@@ -576,6 +576,7 @@ tbody tr:hover { background: var(--bg-main); }
   background: var(--success);
 }
 .security-panel.failed::before { background: var(--danger); }
+.security-panel.warning::before { background: var(--warning); }
 
 .crypto-data {
   font-family: monospace;

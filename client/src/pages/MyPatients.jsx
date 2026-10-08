@@ -142,7 +142,7 @@ const MyPatients = () => {
                       <td>{patient.lastRecordDate ? new Date(patient.lastRecordDate).toLocaleDateString() : 'No records'}</td>
                       <td style={{ textAlign: 'right' }}>
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                          <button onClick={() => navigate('/doctor-dashboard', { state: { searchId: patient.patientId } })} className="btn btn-outline" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}>
+                          <button onClick={() => navigate('/patient-records/' + patient.patientId)} className="btn btn-outline" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}>
                             <FileText size={14} /> View Records
                           </button>
                           <Link to={`/create-record/${patient.patientId}`} className="btn btn-primary" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}>

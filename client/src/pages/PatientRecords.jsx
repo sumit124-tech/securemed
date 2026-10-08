@@ -1,31 +1,33 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getPatientRecords } from '../api/records';
-import { FileText, ShieldAlert, CheckCircle2, ChevronLeft, Inbox } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { ChevronLeft, FileText, FilePlus, ShieldAlert, CheckCircle2 } from 'lucide-react';
 
-const MedicalRecords = () => {
-  const { user } = useAuth();
+const PatientRecords = () => {
+  const { patientId } = useParams();
   const navigate = useNavigate();
-  
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
+  const [error, setError] = useState(null);
+  
   const toArray = (res) => Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
 
   useEffect(() => {
-    if (user?._id) fetchRecords();
-  }, [user]);
+    fetchRecords();
+  }, [patientId]);
 
   const fetchRecords = async () => {
     try {
       setLoading(true);
-      setError(false);
-      const res = await getPatientRecords(user?._id, true);
+      setError(null);
+      const res = await getPatientRecords(patientId, true);
       setRecords(toArray(res));
     } catch (err) {
-      setError(true);
+      if (err.response?.status === 403) {
+        setError('Access not granted');
+      } else {
+        setError(err.response?.data?.message || 'Failed to fetch records');
+      }
     } finally {
       setLoading(false);
     }
@@ -33,33 +35,44 @@ const MedicalRecords = () => {
 
   return (
     <div>
-      <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <button onClick={() => navigate(-1)} className="btn btn-outline" style={{ padding: '0.5rem', borderRadius: '50%' }}>
-          <ChevronLeft size={20} />
-        </button>
-        <div>
-          <h1 className="page-title">Medical Records</h1>
-          <p className="page-subtitle">Your complete, blockchain-secured medical history.</p>
+      <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: '1rem', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button onClick={() => navigate(-1)} className="btn btn-outline" style={{ padding: '0.5rem', borderRadius: '50%' }}>
+            <ChevronLeft size={20} />
+          </button>
+          <div>
+            <h1 className="page-title">Patient Records</h1>
+            <p className="page-subtitle">Patient ID: {patientId}</p>
+          </div>
         </div>
+        <Link to={`/create-record/${patientId}`} className="btn btn-primary" style={{ padding: '0.5rem 1rem' }}>
+          <FilePlus size={16} style={{ marginRight: '0.5rem' }}/> Create Record
+        </Link>
       </div>
 
       <div className="card">
         <div className="card-header">
-          <h3 className="card-title"><FileText size={20} className="text-muted" /> All Medical Records</h3>
+          <h3 className="card-title"><FileText size={20} className="text-muted" /> Medical Records</h3>
         </div>
         <div className="card-body" style={{ padding: 0 }}>
-          {error ? (
+          {error === 'Access not granted' ? (
+            <div style={{ padding: '3rem', textAlign: 'center' }}>
+              <ShieldAlert size={48} className="text-danger" style={{ marginBottom: '1rem' }} />
+              <h3 style={{ color: 'var(--danger)' }}>Access not granted</h3>
+              <p>You do not have approved access to this patient's records.</p>
+            </div>
+          ) : error ? (
             <div style={{ padding: '2rem', textAlign: 'center' }}>
-              <p style={{ color: 'var(--danger)', marginBottom: '1rem' }}>Failed to load medical records.</p>
+              <p style={{ color: 'var(--danger)', marginBottom: '1rem' }}>{error}</p>
               <button onClick={fetchRecords} className="btn btn-outline">Retry</button>
             </div>
           ) : loading ? (
             <div className="loading-container" style={{ padding: '3rem' }}><div className="loading-spinner"></div></div>
           ) : records.length === 0 ? (
             <div className="empty-state">
-              <Inbox size={48} className="empty-state-icon" />
-              <h3>No records yet.</h3>
-              <p>Your doctor creates records after you approve their access.<br/>Share your Patient ID with them.</p>
+              <FileText size={48} className="empty-state-icon" />
+              <h3>No records yet</h3>
+              <p>This patient has no medical records.</p>
             </div>
           ) : (
             <div className="table-container">
@@ -67,7 +80,6 @@ const MedicalRecords = () => {
                 <thead>
                   <tr>
                     <th>Date</th>
-                    <th>Doctor</th>
                     <th>Diagnosis</th>
                     <th>Integrity Status</th>
                     <th>Transaction Hash</th>
@@ -78,10 +90,6 @@ const MedicalRecords = () => {
                   {records.map(record => (
                     <tr key={record?._id}>
                       <td>{new Date(record?.visitDate).toLocaleDateString()}</td>
-                      <td>
-                        <div style={{ fontWeight: 500 }}>{record?.doctor?.firstName} {record?.doctor?.lastName}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{record?.doctor?.email}</div>
-                      </td>
                       <td><strong>{record?.diagnosis}</strong></td>
                       <td>
                         {record?.verificationStatus === 'VERIFIED' ? (
@@ -118,4 +126,4 @@ const MedicalRecords = () => {
   );
 };
 
-export default MedicalRecords;
+export default PatientRecords;

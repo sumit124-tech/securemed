@@ -57,7 +57,7 @@ const CreateRecord = () => {
       });
       
       setTimeout(() => {
-        navigate('/doctor/patients');
+        navigate('/my-patients');
       }, 3000);
       
     } catch (err) {

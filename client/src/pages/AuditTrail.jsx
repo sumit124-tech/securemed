@@ -56,6 +56,7 @@ const AuditTrail = () => {
   };
 
   const getActionIcon = (action) => {
+    if (action.includes('FAILED') || action.includes('DENIED') || action.includes('REJECTED')) return <ShieldAlert size={16} />;
     if (action.includes('RECORD')) return <FileText size={16} />;
     if (action.includes('ACCESS')) return <ShieldCheck size={16} />;
     if (action.includes('LOGIN') || action.includes('REGISTER')) return <UserPlus size={16} />;
@@ -78,7 +79,9 @@ const AuditTrail = () => {
       case 'VERIFY_RECORD': return 'Integrity verified';
       case 'VERIFY_RECORD_FAILED': return 'Integrity check failed';
       case 'LOGIN': return 'Login';
-      default: return action;
+      default: 
+        if (!action) return 'Unknown Action';
+        return action.replace(/_/g, ' ').toLowerCase().replace(/^\w/, c => c.toUpperCase());
     }
   };
 
@@ -131,6 +134,7 @@ const AuditTrail = () => {
               <option value="ACCESS_REVOKED">Access revoked</option>
               <option value="REQUEST_ACCESS">Access requested</option>
               <option value="VERIFY_RECORD">Integrity verified</option>
+              <option value="VERIFY_RECORD_FAILED">Integrity check failed</option>
               <option value="LOGIN">Login</option>
             </select>
           </div>

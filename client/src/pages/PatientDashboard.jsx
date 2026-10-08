@@ -41,7 +41,7 @@ const PatientDashboard = () => {
     try {
       setLoadingRecords(true);
       setRecordsError(false);
-      const res = await getPatientRecords(user?._id);
+      const res = await getPatientRecords(user?._id, true);
       setRecords(toArray(res));
     } catch (err) {
       setRecordsError(true);
@@ -144,7 +144,7 @@ const PatientDashboard = () => {
           </div>
           <div className="stat-details">
             <h4>Verified Records</h4>
-            <div className="stat-value">{loadingRecords ? '-' : safeRecords.length}</div>
+            <div className="stat-value">{loadingRecords ? '-' : safeRecords.filter(r => r.verificationStatus === 'VERIFIED').length}</div>
             <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Secured on blockchain</p>
           </div>
         </div>
@@ -215,6 +215,7 @@ const PatientDashboard = () => {
                       <th>Diagnosis / Record Type</th>
                       <th>Date</th>
                       <th>Verification Status</th>
+                      <th>Transaction Hash</th>
                       <th style={{ textAlign: 'right' }}>Action</th>
                     </tr>
                   </thead>
@@ -224,7 +225,22 @@ const PatientDashboard = () => {
                         <td><strong>{record?.diagnosis}</strong></td>
                         <td>{new Date(record?.visitDate).toLocaleDateString()}</td>
                         <td>
-                          <span className="badge badge-success"><CheckCircle2 size={12}/> Verified</span>
+                          {record?.verificationStatus === 'VERIFIED' ? (
+                            <span className="badge badge-success"><CheckCircle2 size={12}/> Verified</span>
+                          ) : record?.verificationStatus === 'TAMPERED' ? (
+                            <span className="badge badge-danger"><ShieldAlert size={12}/> Tampered</span>
+                          ) : record?.verificationStatus === 'BLOCKCHAIN_UNREACHABLE' ? (
+                            <span className="badge badge-warning" title="Blockchain node offline"><ShieldAlert size={12}/> Offline</span>
+                          ) : record?.verificationStatus === 'CONTRACT_NOT_DEPLOYED' ? (
+                            <span className="badge badge-warning" title="Contract not deployed at this address"><ShieldAlert size={12}/> No Contract</span>
+                          ) : record?.verificationStatus === 'NOT_ANCHORED' ? (
+                            <span className="badge badge-warning" title="Record was never anchored on this chain"><ShieldAlert size={12}/> Not Anchored</span>
+                          ) : (
+                            <span className="badge" style={{ background: '#e2e8f0', color: '#64748b' }}>Not checked</span>
+                          )}
+                        </td>
+                        <td style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-muted)' }} title={record?.transactionHash}>
+                          {record?.transactionHash ? `${record.transactionHash.substring(0, 10)}...` : 'N/A'}
                         </td>
                         <td style={{ textAlign: 'right' }}>
                           <Link to={`/record/${record?._id}`} className="btn btn-outline" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}>

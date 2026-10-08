@@ -94,11 +94,44 @@ export const getPatientRecords = async (req, res) => {
        return res.status(403).json({ message: 'Unauthorized' });
     }
 
-    const records = await MedicalRecord.find({ patient: patientId }).sort({ visitDate: -1 });
-    // Determine resourceId: if the request path contains a record ID or if there's only one.
-    // Wait, the prompt says "For VIEW_RECORDS, store the patient id (or record id when a single record is opened)."
-    // getPatientRecords is for multiple records of a patient, so resourceId is not a single record.
+    const records = await MedicalRecord.find({ patient: patientId }).populate('doctor', 'firstName lastName email').sort({ visitDate: -1 });
+
     await logAudit(req, { actor: req.user._id, role: req.user.role, action: 'VIEW_RECORDS', resourceType: 'User', resourceId: patientId, relatedPatient: patientId });
+
+    if (req.query.verify === 'true') {
+       const verifiedRecords = await Promise.all(records.map(async (rec) => {
+           const recordObj = rec.toObject ? rec.toObject() : rec;
+           const currentData = {
+              patient: rec.patient,
+              doctor: rec.doctor ? rec.doctor._id : rec.doctor,
+              visitDate: rec.visitDate,
+              symptoms: rec.symptoms,
+              diagnosis: rec.diagnosis,
+              treatment: rec.treatment,
+              prescription: rec.prescription,
+           };
+           const calculatedHash = generateRecordHash(currentData);
+           let isVerified = false;
+           let onChainData = null;
+           let status = 'TAMPERED';
+           try {
+             isVerified = await blockchainService.verifyHash(rec._id, calculatedHash);
+             onChainData = await blockchainService.getRecordHistory(rec._id);
+             if (isVerified) status = 'VERIFIED';
+           } catch(e) {
+             if (e.message === 'BLOCKCHAIN_UNREACHABLE') status = 'BLOCKCHAIN_UNREACHABLE';
+             else if (e.message === 'CONTRACT_NOT_DEPLOYED') status = 'CONTRACT_NOT_DEPLOYED';
+             else if (e.message === 'NOT_ANCHORED') status = 'NOT_ANCHORED';
+           }
+           return {
+               ...recordObj,
+               verificationStatus: status,
+               calculatedHash,
+               blockchainHash: onChainData ? onChainData.hash : null
+           };
+       }));
+       return res.json(verifiedRecords);
+    }
 
     res.json(records);
   } catch (error) {
@@ -134,22 +167,33 @@ export const verifyRecordIntegrity = async (req, res) => {
     const calculatedHash = generateRecordHash(currentData);
 
     // Consult the Smart Contract
-    const isVerified = await blockchainService.verifyHash(record._id, calculatedHash);
-    const onChainData = await blockchainService.getRecordHistory(record._id);
+    let isVerified = false;
+    let onChainData = null;
+    let status = 'INTEGRITY_CHECK_FAILED';
+    try {
+      isVerified = await blockchainService.verifyHash(record._id, calculatedHash);
+      onChainData = await blockchainService.getRecordHistory(record._id);
+      status = isVerified ? 'VERIFIED' : 'INTEGRITY_CHECK_FAILED';
+    } catch (e) {
+      if (e.message === 'BLOCKCHAIN_UNREACHABLE') status = 'BLOCKCHAIN_UNREACHABLE';
+      else if (e.message === 'CONTRACT_NOT_DEPLOYED') status = 'CONTRACT_NOT_DEPLOYED';
+      else if (e.message === 'NOT_ANCHORED') status = 'NOT_ANCHORED';
+    }
 
-    if (isVerified) {
+    if (status === 'VERIFIED') {
       await logAudit(req, { actor: req.user._id, role: req.user.role, action: 'VERIFY_RECORD', resourceType: 'MedicalRecord', resourceId: record._id, relatedPatient: record.patient, forceLog: req.query.forceLog === 'true' });
     } else {
       await logAudit(req, { actor: req.user._id, role: req.user.role, action: 'VERIFY_RECORD_FAILED', resourceType: 'MedicalRecord', resourceId: record._id, relatedPatient: record.patient });
     }
 
     res.json({
-      status: isVerified ? 'VERIFIED' : 'INTEGRITY_CHECK_FAILED',
+      status: status,
       calculatedHash,
       blockchainHash: onChainData ? onChainData.hash : null,
       transactionHash: record.blockchainTxHash,
       timestamp: onChainData ? new Date(Number(onChainData.timestamp) * 1000) : null,
-      recordData: currentData
+      recordData: currentData,
+      createdAt: record.createdAt
     });
 
   } catch (error) {

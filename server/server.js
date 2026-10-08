@@ -79,6 +79,16 @@ connectDB().then(() => {
       const blockchainService = module.default;
       blockchainService.provider.getNetwork().then((network) => {
         console.log(`Blockchain connected: ${network.name}`);
+        const address = blockchainService.getContractAddress();
+        blockchainService.provider.getCode(address).then(code => {
+          if (code === '0x') {
+            console.warn(`WARNING: No contract code found at address ${address}. Please redeploy and update .env.blockchain.`);
+          } else {
+            console.log(`Smart contract verified at ${address}`);
+          }
+        }).catch(err => {
+          console.warn(`WARNING: Failed to check contract code at ${address} (${err.message})`);
+        });
       }).catch((err) => {
         console.warn(`WARNING: Blockchain is unreachable. Smart contract functions will fail! (${err.message})`);
       });

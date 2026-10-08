@@ -60,9 +60,15 @@ class BlockchainService {
 
   async verifyHash(recordId, currentHash) {
     try {
+      const code = await this.provider.getCode(CONTRACT_ADDRESS);
+      if (code === '0x') throw new Error('CONTRACT_NOT_DEPLOYED');
+      
       const isVerified = await this.contract.verifyRecord(recordId.toString(), currentHash);
       return isVerified;
     } catch (error) {
+      if (error.message === 'CONTRACT_NOT_DEPLOYED') throw error;
+      if (error.code === 'NETWORK_ERROR' || (error.message && (error.message.includes('ECONNREFUSED') || error.message.includes('could not detect network')))) throw new Error('BLOCKCHAIN_UNREACHABLE');
+      if (error.message && (error.message.includes('revert') || error.message.includes('execution reverted'))) throw new Error('NOT_ANCHORED');
       console.error('Blockchain verify error:', error);
       return false;
     }
@@ -70,15 +76,27 @@ class BlockchainService {
   
   async getRecordHistory(recordId) {
     try {
+        const code = await this.provider.getCode(CONTRACT_ADDRESS);
+        if (code === '0x') throw new Error('CONTRACT_NOT_DEPLOYED');
+        
         const result = await this.contract.getLatestHash(recordId.toString());
+        if (!result || !result[0]) throw new Error('NOT_ANCHORED');
+        
         return {
             hash: result[0],
             timestamp: result[1].toString(),
             anchoredBy: result[2]
         };
     } catch (error) {
+        if (error.message === 'CONTRACT_NOT_DEPLOYED' || error.message === 'NOT_ANCHORED') throw error;
+        if (error.code === 'NETWORK_ERROR' || (error.message && (error.message.includes('ECONNREFUSED') || error.message.includes('could not detect network')))) throw new Error('BLOCKCHAIN_UNREACHABLE');
+        if (error.message && (error.message.includes('revert') || error.message.includes('execution reverted'))) throw new Error('NOT_ANCHORED');
         return null;
     }
+  }
+  
+  getContractAddress() {
+    return CONTRACT_ADDRESS;
   }
 }
 

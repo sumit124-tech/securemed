@@ -52,7 +52,9 @@ const RecordDetails = () => {
   }
 
   const isVerified = recordInfo?.status === 'VERIFIED';
-  // Backend returns: status, calculatedHash, blockchainHash, transactionHash, timestamp, recordData (if populated)
+  const isTampered = recordInfo?.status === 'TAMPERED' || recordInfo?.status === 'INTEGRITY_CHECK_FAILED';
+  const isWarning = !isVerified && !isTampered;
+  // Backend returns: status, calculatedHash, blockchainHash, transactionHash, timestamp, recordData (if populated), createdAt
   const data = recordInfo?.recordData || {};
 
   return (
@@ -72,10 +74,10 @@ const RecordDetails = () => {
         {/* Left Column: Clinical Data */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           <div className="card">
-            <div className="card-header">
+            <div className={`card-header`}>
               <h3 className="card-title"><Activity size={18} className="text-muted"/> Clinical Information</h3>
-              <div className={`badge badge-${isVerified ? 'success' : 'danger'}`}>
-                {isVerified ? 'Integrity Verified' : 'Integrity Warning'}
+              <div className={`badge badge-${isVerified ? 'success' : isTampered ? 'danger' : 'warning'}`}>
+                {isVerified ? 'Integrity Verified' : isTampered ? 'Integrity Warning' : 'Not Verified'}
               </div>
             </div>
             <div className="card-body">
@@ -111,20 +113,31 @@ const RecordDetails = () => {
         {/* Right Column: Cryptographic Security Panel */}
         <div style={{ position: 'sticky', top: '1rem' }}>
           
-          <div className={`security-panel ${!isVerified ? 'failed' : ''}`}>
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', fontSize: '1.1rem', color: isVerified ? 'var(--success)' : 'var(--danger)' }}>
+          <div className={`security-panel ${isTampered ? 'failed' : isWarning ? 'warning' : ''}`}>
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', fontSize: '1.1rem', color: isVerified ? 'var(--success)' : isTampered ? 'var(--danger)' : 'var(--warning)' }}>
               {isVerified ? <ShieldCheck size={24} /> : <ShieldAlert size={24} />}
-              {isVerified ? 'INTEGRITY VERIFIED' : 'INTEGRITY WARNING'}
+              {recordInfo?.status === 'BLOCKCHAIN_UNREACHABLE' ? 'BLOCKCHAIN OFFLINE' : 
+               recordInfo?.status === 'CONTRACT_NOT_DEPLOYED' ? 'CONTRACT NOT DEPLOYED' :
+               recordInfo?.status === 'NOT_ANCHORED' ? 'RECORD NOT ANCHORED' :
+               (isVerified ? 'INTEGRITY VERIFIED' : 'INTEGRITY WARNING')}
             </h3>
             
             <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-              {isVerified 
+              {recordInfo?.status === 'BLOCKCHAIN_UNREACHABLE'
+                ? "Blockchain node offline"
+                : recordInfo?.status === 'CONTRACT_NOT_DEPLOYED'
+                ? "Contract not deployed at this address: redeploy and update .env.blockchain"
+                : recordInfo?.status === 'NOT_ANCHORED'
+                ? "Record was never anchored on this chain"
+                : (isVerified 
                 ? "This medical record has been verified. It has not been altered since it was created." 
-                : "Warning: The data in this record does not match its original fingerprint. It may have been altered."}
+                : "These do not match: the record was modified after it was created.")}
             </p>
 
             <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', margin: 0 }}>Record Fingerprint</p>
+              <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', margin: 0 }}>
+                {!isVerified && !['BLOCKCHAIN_UNREACHABLE', 'CONTRACT_NOT_DEPLOYED', 'NOT_ANCHORED'].includes(recordInfo?.status) ? 'Recalculated from current data' : 'Record Fingerprint'}
+              </p>
               <button 
                 className="btn btn-outline btn-sm" 
                 onClick={() => fetchRecordVerification(true)} 
@@ -138,19 +151,31 @@ const RecordDetails = () => {
             <div className="crypto-data" style={{ marginBottom: '1rem' }}>{recordInfo?.calculatedHash}</div>
 
             <div style={{ marginBottom: '1rem' }}>
-              <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Verification Reference</p>
-              <div className="crypto-data">{recordInfo?.blockchainHash || 'Not Found'}</div>
+              <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
+                {!isVerified && !['BLOCKCHAIN_UNREACHABLE', 'CONTRACT_NOT_DEPLOYED', 'NOT_ANCHORED'].includes(recordInfo?.status) ? 'Stored on blockchain (original)' : 'Verification Reference'}
+              </p>
+              <div className="crypto-data">
+                {recordInfo?.status === 'BLOCKCHAIN_UNREACHABLE' ? 'Blockchain unreachable' : 
+                 recordInfo?.status === 'CONTRACT_NOT_DEPLOYED' ? 'Contract not deployed' :
+                 recordInfo?.status === 'NOT_ANCHORED' ? 'Not anchored' :
+                 (recordInfo?.blockchainHash || 'Not Found')}
+              </div>
             </div>
             
             <div style={{ marginBottom: '1rem' }}>
               <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>System Receipt</p>
-              <div className="crypto-data">{recordInfo?.transactionHash || 'N/A'}</div>
+              <div className="crypto-data">
+                {recordInfo?.status === 'NOT_ANCHORED' && recordInfo?.transactionHash 
+                  ? 'Transaction not found on current chain' 
+                  : (recordInfo?.transactionHash || 'N/A')}
+              </div>
             </div>
             
             <div>
               <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Timestamp</p>
               <div style={{ fontSize: '0.875rem' }}>
-                {recordInfo?.timestamp ? new Date(recordInfo.timestamp).toLocaleString() : 'N/A'}
+                {recordInfo?.createdAt ? new Date(recordInfo.createdAt).toLocaleString() : 'N/A'}
+                {recordInfo?.timestamp ? ` (Block: ${new Date(recordInfo.timestamp).toLocaleString()})` : ''}
               </div>
             </div>
           </div>

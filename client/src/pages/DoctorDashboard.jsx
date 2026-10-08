@@ -3,16 +3,16 @@ import { useAuth } from '../context/AuthContext';
 import { requestAccess } from '../api/access';
 import { getPatientRecords } from '../api/records';
 import { Search, Users, ShieldAlert, FileText, Activity, AlertTriangle, Clock } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 
 const DoctorDashboard = () => {
   const { user, profile, refreshUser } = useAuth();
   const [searchId, setSearchId] = useState('');
-  const [patientRecords, setPatientRecords] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const navigate = useNavigate();
   
   const [stats, setStats] = useState(null);
   const [sentRequests, setSentRequests] = useState([]);
@@ -48,26 +48,7 @@ const DoctorDashboard = () => {
   const handleSearch = async (e) => {
     e.preventDefault();
     if (!searchId.trim()) return;
-
-    try {
-      setLoading(true);
-      setError('');
-      setSuccess('');
-      setPatientRecords([]);
-
-      const records = await getPatientRecords(searchId);
-      setPatientRecords(toArray(records));
-    } catch (err) {
-      if (err.response?.status === 403) {
-        setError('You do not have access to this patient\'s records.');
-      } else if (err.response?.status === 404) {
-        setError('Patient not found.');
-      } else {
-        setError(err.response?.data?.message || 'Error searching patient.');
-      }
-    } finally {
-      setLoading(false);
-    }
+    navigate(`/patient-records/${searchId}`);
   };
 
   const handleRequestAccess = async () => {
@@ -210,42 +191,7 @@ const DoctorDashboard = () => {
             </div>
           </div>
 
-          {patientRecords.length > 0 && (
-            <div className="card">
-              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 className="card-title"><FileText size={20} className="text-muted"/> Medical Records</h3>
-                <Link to={`/create-record/${searchId}`} className="btn btn-primary" style={{ padding: '0.25rem 0.75rem', fontSize: '0.875rem' }}>
-                  + Author Record
-                </Link>
-              </div>
-              <div className="card-body" style={{ padding: 0 }}>
-                <div className="table-container">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Diagnosis</th>
-                        <th>Date</th>
-                        <th style={{ textAlign: 'right' }}>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {patientRecords.map(record => (
-                        <tr key={record._id}>
-                          <td><strong>{record.diagnosis}</strong></td>
-                          <td>{new Date(record.visitDate).toLocaleDateString()}</td>
-                          <td style={{ textAlign: 'right' }}>
-                            <Link to={`/record/${record._id}`} className="btn btn-outline" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}>
-                              View details
-                            </Link>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
+
         </div>
 
         {/* Right Column */}
