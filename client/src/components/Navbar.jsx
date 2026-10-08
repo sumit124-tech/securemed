@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Shield, LogOut, User, Bell, Check, CheckCheck } from 'lucide-react';
+import { Shield, LogOut, User, Bell, Check, CheckCheck, ShieldAlert, Users, FileText, X, ShieldCheck } from 'lucide-react';
 import axios from 'axios';
 
 const Navbar = () => {
@@ -42,6 +42,26 @@ const Navbar = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const getRelativeTime = (date) => {
+    const elapsed = (new Date() - new Date(date)) / 1000;
+    if (elapsed < 60) return 'Just now';
+    if (elapsed < 3600) return Math.floor(elapsed / 60) + ' min ago';
+    if (elapsed < 86400) return Math.floor(elapsed / 3600) + ' hours ago';
+    return Math.floor(elapsed / 86400) + ' days ago';
+  };
+
+  const getNotificationIcon = (type) => {
+    switch (type) {
+      case 'INTEGRITY_CHECK_FAILED': return <ShieldAlert size={16} color="var(--danger)" />;
+      case 'ACCESS_REQUEST': return <Users size={16} color="var(--primary)" />;
+      case 'ACCESS_APPROVED': return <ShieldCheck size={16} color="var(--success)" />;
+      case 'ACCESS_REJECTED': return <X size={16} color="var(--danger)" />;
+      case 'ACCESS_REVOKED': return <LogOut size={16} color="var(--warning)" />;
+      case 'RECORD_CREATED': return <FileText size={16} color="#0EA5A4" />;
+      default: return <Bell size={16} color="var(--text-muted)" />;
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -179,17 +199,22 @@ const Navbar = () => {
                           }}
                         >
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                            <span style={{ fontSize: '0.875rem', color: 'var(--text-main)', fontWeight: n.isRead ? 400 : 500 }}>
-                              {n.message}
-                            </span>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                              <div style={{ marginTop: '0.125rem' }}>
+                                {getNotificationIcon(n.type)}
+                              </div>
+                              <span style={{ fontSize: '0.875rem', color: 'var(--text-main)', fontWeight: n.isRead ? 400 : 500 }}>
+                                {n.message}
+                              </span>
+                            </div>
                             {!n.isRead && (
                               <button onClick={(e) => handleMarkAsRead(n._id, e)} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', padding: '0.25rem' }} title="Mark as read">
                                 <Check size={14} />
                               </button>
                             )}
                           </div>
-                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                            {new Date(n.createdAt).toLocaleString()}
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '1.5rem' }}>
+                            {getRelativeTime(n.createdAt)}
                           </span>
                         </div>
                       ))}

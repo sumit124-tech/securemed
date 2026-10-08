@@ -48,6 +48,7 @@ const apiLimiter = rateLimit({
   validate: { trustProxy: false }
 });
 app.use('/api/auth', apiLimiter); // Apply only to auth routes as requested
+app.use('/api/records/verify', apiLimiter);
 
 // Middleware
 app.use(express.json({ limit: '1mb' })); // Limit body size to prevent payload starvation attacks

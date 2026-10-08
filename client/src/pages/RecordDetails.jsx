@@ -1,15 +1,25 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { verifyRecord } from '../api/records';
-import { ShieldCheck, ShieldAlert, FileText, Database, Key, ArrowDown, Activity, ChevronLeft, Stethoscope, RefreshCw } from 'lucide-react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { verifyRecord, getRecordHistory, editRecord } from '../api/records';
+import { ShieldCheck, ShieldAlert, FileText, Database, Key, ArrowDown, Activity, ChevronLeft, Stethoscope, RefreshCw, Edit2 } from 'lucide-react';
 import { useRef } from 'react';
+import { useAuth } from '../context/AuthContext';
 
 const RecordDetails = () => {
   const { recordId } = useParams();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [recordInfo, setRecordInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [verifyingManual, setVerifyingManual] = useState(false);
+  
+  const [history, setHistory] = useState([]);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editFormData, setEditFormData] = useState({});
+  const [editError, setEditError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
   const hasFetched = useRef(false);
 
   useEffect(() => {
@@ -28,6 +38,16 @@ const RecordDetails = () => {
       }
       const data = await verifyRecord(recordId, forceLog);
       setRecordInfo(data);
+      if (!forceLog) {
+        const histData = await getRecordHistory(recordId);
+        setHistory(histData);
+        setEditFormData({
+          symptoms: data.recordData?.symptoms || '',
+          diagnosis: data.recordData?.diagnosis || '',
+          treatment: data.recordData?.treatment || '',
+          prescription: data.recordData?.prescription || ''
+        });
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to verify the integrity of the record.');
     } finally {
@@ -59,14 +79,21 @@ const RecordDetails = () => {
 
   return (
     <div>
-      <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <button onClick={() => window.history.back()} className="btn btn-outline" style={{ padding: '0.5rem', borderRadius: '50%' }}>
-          <ChevronLeft size={20} />
-        </button>
-        <div>
-          <h1 className="page-title">Medical Record Details</h1>
-          <p className="page-subtitle">ID: <span style={{ fontFamily: 'monospace' }}>{recordId}</span></p>
+      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button onClick={() => navigate(-1)} className="btn btn-outline" style={{ padding: '0.5rem', borderRadius: '50%' }}>
+            <ChevronLeft size={20} />
+          </button>
+          <div>
+            <h1 className="page-title">Medical Record Details {recordInfo?.version && <span className="badge badge-primary" style={{marginLeft: '0.5rem'}}>v{recordInfo.version}</span>}</h1>
+            <p className="page-subtitle">ID: <span style={{ fontFamily: 'monospace' }}>{recordId}</span></p>
+          </div>
         </div>
+        {user?.role === 'DOCTOR' && recordInfo?.recordStatus === 'ACTIVE' && (
+          <button className="btn btn-primary" onClick={() => setIsEditing(!isEditing)}>
+            <Edit2 size={16} /> {isEditing ? 'Cancel Edit' : 'Edit Record'}
+          </button>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 350px', gap: '2rem', alignItems: 'start' }}>
@@ -81,33 +108,140 @@ const RecordDetails = () => {
               </div>
             </div>
             <div className="card-body">
-              <div style={{ marginBottom: '1.5rem' }}>
-                <p className="text-muted" style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>Primary Diagnosis</p>
-                <p style={{ fontSize: '1.1rem', fontWeight: 500, color: 'var(--text-main)' }}>{data.diagnosis || 'Not provided'}</p>
-              </div>
+              {editError && <div className="alert alert-danger" style={{ marginBottom: '1rem' }}>{editError}</div>}
+              {isEditing ? (
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  setEditError('');
+                  setIsSaving(true);
+                  try {
+                    const trimmedData = {
+                      symptoms: editFormData.symptoms?.trim() || '',
+                      diagnosis: editFormData.diagnosis?.trim() || '',
+                      treatment: editFormData.treatment?.trim() || '',
+                      prescription: editFormData.prescription?.trim() || ''
+                    };
+                    const newVersion = await editRecord(recordId, trimmedData);
+                    setIsEditing(false);
+                    navigate('/record/' + newVersion._id, { replace: true });
+                    window.location.reload(); // Quick way to reset state for new record
+                  } catch (err) {
+                    setEditError(err.response?.data?.message || 'Failed to save new version');
+                  } finally {
+                    setIsSaving(false);
+                  }
+                }}>
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <label className="form-label">Primary Diagnosis</label>
+                    <input type="text" className="form-input" value={editFormData.diagnosis} onChange={e => setEditFormData({...editFormData, diagnosis: e.target.value})} required />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <label className="form-label">Symptoms & Presentation</label>
+                    <textarea className="form-input" rows="3" value={editFormData.symptoms} onChange={e => setEditFormData({...editFormData, symptoms: e.target.value})} required />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <label className="form-label">Treatment Plan</label>
+                    <textarea className="form-input" rows="3" value={editFormData.treatment} onChange={e => setEditFormData({...editFormData, treatment: e.target.value})} required />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <label className="form-label">Prescriptions</label>
+                    <textarea className="form-input" rows="3" value={editFormData.prescription} onChange={e => setEditFormData({...editFormData, prescription: e.target.value})} required />
+                  </div>
+                  <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+                    <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                      {isSaving ? 'Saving...' : 'Save New Version'}
+                    </button>
+                    <button type="button" className="btn btn-outline" onClick={() => setIsEditing(false)}>Cancel</button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <p className="text-muted" style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>Primary Diagnosis</p>
+                    <p style={{ fontSize: '1.1rem', fontWeight: 500, color: 'var(--text-main)' }}>{data.diagnosis || 'Not provided'}</p>
+                  </div>
 
-              <div style={{ marginBottom: '1.5rem' }}>
-                <p className="text-muted" style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>Symptoms & Presentation</p>
-                <p style={{ color: 'var(--text-main)', background: 'var(--bg-main)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
-                  {data.symptoms || 'Not provided'}
-                </p>
-              </div>
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <p className="text-muted" style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>Symptoms & Presentation</p>
+                    <p style={{ color: 'var(--text-main)', background: 'var(--bg-main)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
+                      {data.symptoms || 'Not provided'}
+                    </p>
+                  </div>
 
-              <div style={{ marginBottom: '1.5rem' }}>
-                <p className="text-muted" style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>Treatment Plan</p>
-                <p style={{ color: 'var(--text-main)', background: 'var(--bg-main)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
-                  {data.treatment || 'Not provided'}
-                </p>
-              </div>
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <p className="text-muted" style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>Treatment Plan</p>
+                    <p style={{ color: 'var(--text-main)', background: 'var(--bg-main)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
+                      {data.treatment || 'Not provided'}
+                    </p>
+                  </div>
 
-              <div>
-                <p className="text-muted" style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>Prescriptions</p>
-                <p style={{ color: 'var(--text-main)', background: 'var(--bg-main)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
-                  {data.prescription || 'Not provided'}
-                </p>
-              </div>
+                  <div>
+                    <p className="text-muted" style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>Prescriptions</p>
+                    <p style={{ color: 'var(--text-main)', background: 'var(--bg-main)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
+                      {data.prescription || 'Not provided'}
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
           </div>
+
+          {history && history.length > 0 && (
+            <div className="card" style={{ marginTop: '2rem' }}>
+              <div className="card-header">
+                <h3 className="card-title">Version History</h3>
+              </div>
+              <div className="card-body" style={{ padding: 0 }}>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Version</th>
+                      <th>Date</th>
+                      <th>Status</th>
+                      <th>Tx Hash</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map((item) => (
+                      <tr key={item._id} style={{ background: item._id === recordId ? 'var(--bg-main)' : 'transparent' }}>
+                        <td>
+                          v{item.version}
+                          {item._id === recordId && <span className="badge badge-primary" style={{marginLeft: '0.5rem'}}>Viewing</span>}
+                          {item.status === 'ACTIVE' && <span className="badge badge-success" style={{marginLeft: '0.5rem'}}>CURRENT</span>}
+                        </td>
+                        <td>{new Date(item.createdAt).toLocaleString()}</td>
+                        <td>
+                          {item.verificationStatus === 'VERIFIED' ? (
+                            <span className="badge badge-success">Verified</span>
+                          ) : item.verificationStatus === 'TAMPERED' ? (
+                            <span className="badge badge-danger">Tampered</span>
+                          ) : (
+                            <span className="badge badge-warning">Unverified</span>
+                          )}
+                        </td>
+                        <td>
+                          <span title={item.blockchainTxHash} style={{ cursor: 'help' }}>
+                            {item.blockchainTxHash ? item.blockchainTxHash.substring(0, 10) + '...' : 'N/A'}
+                          </span>
+                        </td>
+                        <td>
+                          {item._id !== recordId ? (
+                            <button className="btn btn-outline btn-sm" onClick={() => {
+                              navigate('/record/' + item._id);
+                              window.location.reload();
+                            }}>View</button>
+                          ) : (
+                            <span className="text-muted">Viewing</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right Column: Cryptographic Security Panel */}
@@ -165,9 +299,9 @@ const RecordDetails = () => {
             <div style={{ marginBottom: '1rem' }}>
               <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>System Receipt</p>
               <div className="crypto-data">
-                {recordInfo?.status === 'NOT_ANCHORED' && recordInfo?.transactionHash 
+                {recordInfo?.status === 'NOT_ANCHORED' && recordInfo?.blockchainTxHash 
                   ? 'Transaction not found on current chain' 
-                  : (recordInfo?.transactionHash || 'N/A')}
+                  : (recordInfo?.blockchainTxHash || 'Not anchored')}
               </div>
             </div>
             

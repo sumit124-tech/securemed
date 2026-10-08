@@ -35,6 +35,13 @@ const PatientDashboard = () => {
       fetchRequests();
       fetchLogs();
     }
+    const interval = setInterval(() => {
+      if (user?._id) {
+        fetchRecords();
+        fetchRequests();
+      }
+    }, 30000);
+    return () => clearInterval(interval);
   }, [user]);
 
   const fetchRecords = async () => {
@@ -114,6 +121,10 @@ const PatientDashboard = () => {
           <h1 className="page-title">Good morning, {profile?.firstName}</h1>
           <p className="page-subtitle">Here's an overview of your medical records and account activity.</p>
         </div>
+        
+        <button onClick={() => { fetchRecords(); fetchRequests(); }} className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Activity size={16} /> Refresh
+        </button>
         
         <div style={{ background: 'white', padding: '0.75rem 1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <div>
@@ -222,7 +233,10 @@ const PatientDashboard = () => {
                   <tbody>
                     {safeRecords.map(record => (
                       <tr key={record?._id}>
-                        <td><strong>{record?.diagnosis}</strong></td>
+                        <td>
+                          <strong>{record?.diagnosis}</strong>
+                          {record?.version > 1 && <Link to={`/record/${record?._id}`}><span className="badge badge-primary" style={{marginLeft: '0.5rem', cursor: 'pointer'}}>v{record?.version}</span></Link>}
+                        </td>
                         <td>{new Date(record?.visitDate).toLocaleDateString()}</td>
                         <td>
                           {record?.verificationStatus === 'VERIFIED' ? (
@@ -239,8 +253,19 @@ const PatientDashboard = () => {
                             <span className="badge" style={{ background: '#e2e8f0', color: '#64748b' }}>Not checked</span>
                           )}
                         </td>
-                        <td style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-muted)' }} title={record?.transactionHash}>
-                          {record?.transactionHash ? `${record.transactionHash.substring(0, 10)}...` : 'N/A'}
+                        <td>
+                          {record?.blockchainTxHash ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                              <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-muted)' }} title={record.blockchainTxHash}>
+                                {record.blockchainTxHash.substring(0, 10)}...
+                              </span>
+                              <button onClick={() => navigator.clipboard.writeText(record.blockchainTxHash)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)' }} title="Copy Hash">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                              </button>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Not anchored</span>
+                          )}
                         </td>
                         <td style={{ textAlign: 'right' }}>
                           <Link to={`/record/${record?._id}`} className="btn btn-outline" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}>

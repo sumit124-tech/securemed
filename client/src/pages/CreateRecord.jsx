@@ -43,7 +43,14 @@ const CreateRecord = () => {
     setIsLoading(true);
 
     try {
-      const res = await createRecord(formData);
+      const trimmedData = {
+        patientId: formData.patientId,
+        symptoms: formData.symptoms.trim(),
+        diagnosis: formData.diagnosis.trim(),
+        treatment: formData.treatment.trim(),
+        prescription: formData.prescription.trim()
+      };
+      const res = await createRecord(trimmedData);
       // createRecord returns the response data directly because of how the API client handles it, or wait, createRecord is a wrapper.
       // Let's assume createRecord returns the data or response. We'll use res directly.
       const data = res.data || res;

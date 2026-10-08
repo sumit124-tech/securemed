@@ -9,6 +9,9 @@ import { logAudit } from '../utils/auditHelper.js';
 // @route   POST /api/auth/register
 export const registerUser = async (req, res) => {
   const { email, password, role, firstName, lastName, ...profileData } = req.body;
+  if (!email || !password || !role || !firstName || !lastName) {
+    return res.status(400).json({ message: 'All fields are required' });
+  }
   try {
     const userExists = await User.findOne({ email });
     if (userExists) return res.status(400).json({ message: 'User already exists' });
@@ -41,8 +44,11 @@ export const registerUser = async (req, res) => {
 // @route   POST /api/auth/login
 export const loginUser = async (req, res) => {
   const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ message: 'Email and password are required' });
+  }
   try {
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email }).select('+password');
     
     if (user && (await user.matchPassword(password))) {
       if (!user.isActive) return res.status(401).json({ message: 'Account deactivated' });

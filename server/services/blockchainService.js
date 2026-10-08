@@ -12,7 +12,7 @@ const RPC_URL = process.env.BLOCKCHAIN_RPC_URL || 'http://127.0.0.1:8545';
 // We use Hardhat Test Account #0 as the "System Wallet" to handle transactions securely on behalf of doctors
 let PRIVATE_KEY = process.env.SYSTEM_WALLET_PRIVATE_KEY;
 if (!PRIVATE_KEY || PRIVATE_KEY === 'your_hardhat_test_account_private_key_here') {
-  PRIVATE_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+  throw new Error('SYSTEM_WALLET_PRIVATE_KEY is not defined in .env');
 }
 
 // The address from our deployment script

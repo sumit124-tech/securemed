@@ -11,8 +11,10 @@ const medicalRecordSchema = new mongoose.Schema({
   documentUrls: [{ type: String }],     // Paths to local files uploaded via multer
   currentHash: { type: String },        // SHA-256 hash computed before saving
   blockchainTxHash: { type: String },   // Tx receipt from Hardhat
-  status: { type: String, enum: ['ACTIVE', 'AMENDED'], default: 'ACTIVE' },
-  previousVersion: { type: mongoose.Schema.Types.ObjectId, ref: 'MedicalRecord' }
+  status: { type: String, enum: ['ACTIVE', 'AMENDED', 'HISTORICAL'], default: 'ACTIVE' },
+  previousVersion: { type: mongoose.Schema.Types.ObjectId, ref: 'MedicalRecord' },
+  version: { type: Number, default: 1 },
+  recordGroupId: { type: mongoose.Schema.Types.ObjectId, ref: 'MedicalRecord' }
 }, { timestamps: true });
 
 medicalRecordSchema.index({ patient: 1 });
