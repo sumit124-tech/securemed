@@ -5,6 +5,7 @@ import {
   getSystemHealth, 
   getUnverifiedDoctors, 
   getAdminPatients, 
+  getRecordsOverview,
   verifyDoctor, 
   rejectDoctor 
 } from '../controllers/adminController.js';
@@ -15,6 +16,7 @@ router.get('/health', protect, authorize('ADMIN'), getSystemHealth);
 router.get('/stats', protect, authorize('ADMIN'), getAdminStats);
 router.get('/doctors', protect, authorize('ADMIN'), getUnverifiedDoctors);
 router.get('/patients', protect, authorize('ADMIN'), getAdminPatients);
+router.get('/records/overview', protect, authorize('ADMIN'), getRecordsOverview);
 router.put('/verify-doctor/:id', protect, authorize('ADMIN'), verifyDoctor);
 router.put('/reject-doctor/:id', protect, authorize('ADMIN'), rejectDoctor);
 

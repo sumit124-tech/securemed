@@ -465,7 +465,8 @@ const AdminDashboard = () => {
               icon: FileText,
               color: '#8B5CF6',
               bg: 'rgba(139, 92, 246, 0.15)',
-              clickable: false
+              clickable: true,
+              onClick: () => navigate('/admin-records')
             },
             {
               id: 'ACTIVITY',

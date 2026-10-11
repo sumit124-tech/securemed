@@ -179,10 +179,16 @@ const Layout = () => {
           )}
 
           {user.role === 'ADMIN' && (
-            <NavLink to="/admin-patients" className={({isActive}) => isActive ? "sidebar-link active" : "sidebar-link"} onClick={() => window.innerWidth <= 1024 && closeSidebar()} title="Patients">
-              <Users size={20} />
-              <span>Patients</span>
-            </NavLink>
+            <>
+              <NavLink to="/admin-patients" className={({isActive}) => isActive ? "sidebar-link active" : "sidebar-link"} onClick={() => window.innerWidth <= 1024 && closeSidebar()} title="Patients">
+                <Users size={20} />
+                <span>Patients</span>
+              </NavLink>
+              <NavLink to="/admin-records" className={({isActive}) => isActive ? "sidebar-link active" : "sidebar-link"} onClick={() => window.innerWidth <= 1024 && closeSidebar()} title="Records">
+                <FileText size={20} />
+                <span>Records</span>
+              </NavLink>
+            </>
           )}
 
           {user.role === 'PATIENT' && (

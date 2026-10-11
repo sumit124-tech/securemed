@@ -9,6 +9,7 @@ const medicalRecordSchema = new mongoose.Schema({
   treatment: { type: String },
   prescription: { type: String },
   documentUrls: [{ type: String }],     // Paths to local files uploaded via multer
+  recordType: { type: String, default: 'Consultation' },
   currentHash: { type: String },        // SHA-256 hash computed before saving
   blockchainTxHash: { type: String },   // Tx receipt from Hardhat
   status: { type: String, enum: ['ACTIVE', 'AMENDED', 'HISTORICAL'], default: 'ACTIVE' },

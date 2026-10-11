@@ -22,6 +22,7 @@ import MedicalRecords from './pages/MedicalRecords';
 import AccessRequests from './pages/AccessRequests';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminPatients from './pages/AdminPatients';
+import AdminRecords from './pages/AdminRecords';
 
 import HowItWorks from './pages/public/HowItWorks';
 import Features from './pages/public/Features';
@@ -91,6 +92,7 @@ function App() {
               <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
                 <Route path="admin-dashboard" element={<AdminDashboard />} />
                 <Route path="admin-patients" element={<AdminPatients />} />
+                <Route path="admin-records" element={<AdminRecords />} />
               </Route>
 
               {/* Catch-All 404 */}

@@ -399,6 +399,178 @@ export const getAdminPatients = async (req, res) => {
   }
 };
 
+// @desc    Get aggregated overview of medical records (NO private content returned)
+// @route   GET /api/admin/records/overview
+// @access  Private/Admin
+export const getRecordsOverview = async (req, res) => {
+  try {
+    // Write audit log entry for admin viewing records overview
+    try {
+      await logAudit(
+        req.user._id,
+        'ADMIN_VIEWED_RECORDS_OVERVIEW',
+        null,
+        req,
+        'Admin accessed medical records statistical overview'
+      );
+    } catch (auditErr) {
+      console.warn('[AUDIT WARNING] Failed to record ADMIN_VIEWED_RECORDS_OVERVIEW:', auditErr.message);
+    }
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const safeOp = async (promise, fallback, label) => {
+      try {
+        return await promise;
+      } catch (err) {
+        console.warn(`[RECORDS OVERVIEW WARNING] Failed to compute ${label}:`, err.message);
+        return fallback;
+      }
+    };
+
+    const [
+      total,
+      today,
+      thisWeek,
+      thisMonth,
+      anchoredOnChain,
+      notAnchored,
+      byTypeRaw,
+      perDayRaw
+    ] = await Promise.all([
+      safeOp(MedicalRecord.countDocuments({}), 0, 'total'),
+      safeOp(MedicalRecord.countDocuments({ createdAt: { $gte: startOfToday } }), 0, 'today'),
+      safeOp(MedicalRecord.countDocuments({ createdAt: { $gte: sevenDaysAgo } }), 0, 'thisWeek'),
+      safeOp(MedicalRecord.countDocuments({ createdAt: { $gte: startOfMonth } }), 0, 'thisMonth'),
+      safeOp(
+        MedicalRecord.countDocuments({
+          blockchainTxHash: { $exists: true, $ne: null, $nin: ['', null] }
+        }),
+        0,
+        'anchoredOnChain'
+      ),
+      safeOp(
+        MedicalRecord.countDocuments({
+          $or: [
+            { blockchainTxHash: { $exists: false } },
+            { blockchainTxHash: null },
+            { blockchainTxHash: '' }
+          ]
+        }),
+        0,
+        'notAnchored'
+      ),
+      safeOp(
+        MedicalRecord.aggregate([
+          {
+            $project: {
+              computedType: {
+                $cond: {
+                  if: { $and: [{ $ne: ['$recordType', null] }, { $ne: ['$recordType', ''] }] },
+                  then: '$recordType',
+                  else: {
+                    $cond: {
+                      if: { $gt: [{ $size: { $ifNull: ['$documentUrls', []] } }, 0] },
+                      then: 'Lab/Document Report',
+                      else: 'General Consultation'
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            $group: {
+              _id: '$computedType',
+              count: { $sum: 1 }
+            }
+          },
+          { $sort: { count: -1 } }
+        ]),
+        [],
+        'byType'
+      ),
+      safeOp(
+        MedicalRecord.aggregate([
+          {
+            $match: {
+              createdAt: { $gte: thirtyDaysAgo }
+            }
+          },
+          {
+            $group: {
+              _id: {
+                $dateToString: { format: '%Y-%m-%d', date: '$createdAt' }
+              },
+              count: { $sum: 1 }
+            }
+          },
+          { $sort: { _id: 1 } }
+        ]),
+        [],
+        'perDay'
+      )
+    ]);
+
+    // Format byType cleanly
+    const byType = (Array.isArray(byTypeRaw) ? byTypeRaw : []).map(item => ({
+      type: item._id || 'General Consultation',
+      count: item.count || 0
+    }));
+
+    // Generate zero-filled 30-day timeline
+    const countMap = {};
+    if (Array.isArray(perDayRaw)) {
+      perDayRaw.forEach(item => {
+        if (item._id) countMap[item._id] = item.count;
+      });
+    }
+
+    const perDay = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+      const dateStr = d.toISOString().split('T')[0];
+      perDay.push({
+        date: dateStr,
+        count: countMap[dateStr] || 0
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        total,
+        today,
+        thisWeek,
+        thisMonth,
+        byType,
+        perDay,
+        anchoredOnChain,
+        notAnchored
+      }
+    });
+  } catch (error) {
+    console.error('getRecordsOverview unexpected error:', error);
+    res.json({
+      success: true,
+      data: {
+        total: 0,
+        today: 0,
+        thisWeek: 0,
+        thisMonth: 0,
+        byType: [],
+        perDay: [],
+        anchoredOnChain: 0,
+        notAnchored: 0
+      }
+    });
+  }
+};
+
 export const verifyDoctor = async (req, res) => {
   try {
     const doctorProfile = await DoctorProfile.findById(req.params.id).populate('user');
