@@ -14,6 +14,9 @@ export const getMyAuditLogs = async (req, res) => {
     } else if (req.user.role === 'DOCTOR') {
       // Doctor: same page, showing only their own actions.
       filter = { actor: userId };
+    } else if (req.user.role === 'ADMIN') {
+      // Admin sees system-wide audit logs
+      filter = {};
     } else {
       filter = { actor: userId };
     }

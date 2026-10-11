@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
 import Layout from './components/Layout';
 import PublicLayout from './components/PublicLayout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -8,6 +9,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 
 import Home from './pages/Home';
 import Login from './pages/Login';
+import AdminLogin from './pages/AdminLogin';
 import Register from './pages/Register';
 import PatientDashboard from './pages/PatientDashboard';
 import DoctorDashboard from './pages/DoctorDashboard';
@@ -19,6 +21,7 @@ import PatientRecords from './pages/PatientRecords';
 import MedicalRecords from './pages/MedicalRecords';
 import AccessRequests from './pages/AccessRequests';
 import AdminDashboard from './pages/AdminDashboard';
+import AdminPatients from './pages/AdminPatients';
 
 import HowItWorks from './pages/public/HowItWorks';
 import Features from './pages/public/Features';
@@ -44,7 +47,8 @@ function App() {
       <BrowserRouter>
         <ScrollToTop />
         <AuthProvider>
-          <Routes>
+          <ToastProvider>
+            <Routes>
             {/* Public Routes with Public Navbar/Footer */}
             <Route element={<PublicLayout />}>
               <Route path="/" element={<Home />} />
@@ -55,6 +59,7 @@ function App() {
               <Route path="/doctors" element={<Doctors />} />
               <Route path="/about" element={<About />} />
               <Route path="/login" element={<Login />} />
+              <Route path="/admin-login" element={<AdminLogin />} />
               <Route path="/register" element={<Register />} />
             </Route>
 
@@ -85,12 +90,14 @@ function App() {
               {/* Admin Routes */}
               <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
                 <Route path="admin-dashboard" element={<AdminDashboard />} />
+                <Route path="admin-patients" element={<AdminPatients />} />
               </Route>
 
               {/* Catch-All 404 */}
               <Route path="*" element={<NotFound />} />
             </Route>
-          </Routes>
+            </Routes>
+          </ToastProvider>
         </AuthProvider>
       </BrowserRouter>
     </ErrorBoundary>

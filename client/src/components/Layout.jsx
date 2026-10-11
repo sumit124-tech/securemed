@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import axios from 'axios';
+import api from '../api/axios';
 import { 
   Shield, 
   Menu, 
@@ -34,11 +34,9 @@ const Layout = () => {
     
     const fetchNotifications = async () => {
       try {
-        const token = localStorage.getItem('token');
-        const res = await axios.get('/api/notifications', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setNotifications(Array.isArray(res.data) ? res.data : []);
+        const res = await api.get('/notifications');
+        const list = Array.isArray(res.data) ? res.data : Array.isArray(res.data?.data) ? res.data.data : [];
+        setNotifications(list);
       } catch (err) {
         console.error('Failed to fetch notifications', err);
       }
@@ -76,10 +74,7 @@ const Layout = () => {
       e.preventDefault();
     }
     try {
-      const token = localStorage.getItem('token');
-      await axios.put(`/api/notifications/${id}/read`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.patch(`/notifications/${id}/read`);
       setNotifications(notifications.map(n => n._id === id ? { ...n, isRead: true } : n));
     } catch (err) {
       console.error(err);
@@ -87,13 +82,12 @@ const Layout = () => {
   };
 
   const handleMarkAllAsRead = async (e) => {
-    e.stopPropagation();
-    e.preventDefault();
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     try {
-      const token = localStorage.getItem('token');
-      await axios.put('/api/notifications/read-all', {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.patch('/notifications/read-all');
       setNotifications(notifications.map(n => ({ ...n, isRead: true })));
     } catch (err) {
       console.error(err);
@@ -106,6 +100,12 @@ const Layout = () => {
     }
     setShowDropdown(false);
     
+    // Priority: Follow notification.link if provided
+    if (notification.link) {
+      navigate(notification.link);
+      return;
+    }
+
     if (user.role === 'PATIENT') {
       navigate('/patient-dashboard');
     } else if (user.role === 'DOCTOR') {
@@ -175,6 +175,13 @@ const Layout = () => {
             <NavLink to="/my-patients" className={({isActive}) => isActive ? "sidebar-link active" : "sidebar-link"} onClick={() => window.innerWidth <= 1024 && closeSidebar()} title="My Patients">
               <Users size={20} />
               <span>My Patients</span>
+            </NavLink>
+          )}
+
+          {user.role === 'ADMIN' && (
+            <NavLink to="/admin-patients" className={({isActive}) => isActive ? "sidebar-link active" : "sidebar-link"} onClick={() => window.innerWidth <= 1024 && closeSidebar()} title="Patients">
+              <Users size={20} />
+              <span>Patients</span>
             </NavLink>
           )}
 
@@ -270,8 +277,10 @@ const Layout = () => {
                   </div>
                   
                   {safeNotifications.length === 0 ? (
-                    <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                      No notifications yet.
+                    <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                      <Check size={28} style={{ color: 'var(--success)', margin: '0 auto 0.5rem', display: 'block' }} />
+                      <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.25rem' }}>You're all caught up</div>
+                      <span style={{ fontSize: '0.75rem' }}>No new notifications at this time.</span>
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -318,14 +327,20 @@ const Layout = () => {
             <div className="user-profile" style={{ marginLeft: '1rem' }}>
               <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column' }}>
                 <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                  {user.role === 'DOCTOR' ? 'Dr. ' : ''}{profile?.firstName} {profile?.lastName}
+                  {profile?.firstName 
+                    ? `${user.role === 'DOCTOR' ? 'Dr. ' : ''}${profile.firstName} ${profile.lastName || ''}`
+                    : user.role === 'ADMIN'
+                    ? 'Admin'
+                    : (user.email?.split('@')[0] || 'User')}
                 </span>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                   {user.role}
                 </span>
               </div>
-              <div className="avatar">
-                {profile?.firstName?.charAt(0)}{profile?.lastName?.charAt(0)}
+              <div className="avatar" style={{ textTransform: 'uppercase', fontWeight: 600 }}>
+                {profile?.firstName
+                  ? `${profile.firstName.charAt(0)}${profile.lastName?.charAt(0) || ''}`
+                  : (user.email?.charAt(0) || 'A')}
               </div>
             </div>
           </div>

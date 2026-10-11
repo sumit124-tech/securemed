@@ -4,6 +4,34 @@ import DoctorProfile from '../models/DoctorProfile.js';
 import generateToken from '../utils/generateToken.js';
 import AuditLog from '../models/AuditLog.js';
 import { logAudit } from '../utils/auditHelper.js';
+import { notifyAdmins } from '../utils/notifyHelper.js';
+
+// In-memory failed login tracking for admin logins (email -> array of timestamps)
+const failedAdminLogins = new Map();
+
+// Helper to track failed admin logins
+const recordFailedLogin = async (email) => {
+  try {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const now = Date.now();
+    const windowMs = 15 * 60 * 1000; // 15 minutes
+
+    const timestamps = (failedAdminLogins.get(cleanEmail) || []).filter(t => now - t < windowMs);
+    timestamps.push(now);
+    failedAdminLogins.set(cleanEmail, timestamps);
+
+    if (timestamps.length === 5) {
+      await notifyAdmins({
+        type: 'SECURITY_ALERT',
+        title: 'Security Alert: Repeated Failed Logins',
+        message: `Security Alert: 5 failed admin login attempts detected for ${cleanEmail} within 15 minutes.`,
+        link: '/audit-trail'
+      });
+    }
+  } catch (err) {
+    console.warn('[FAILED LOGIN TRACKING WARNING]', err.message);
+  }
+};
 
 // @desc    Register new user
 // @route   POST /api/auth/register
@@ -20,14 +48,32 @@ export const registerUser = async (req, res) => {
     const user = await User.create({ email, password, role });
 
     // Create Role-Specific Profile
+    let createdProfile = null;
     if (role === 'PATIENT') {
-      await PatientProfile.create({ user: user._id, firstName, lastName, ...profileData });
+      createdProfile = await PatientProfile.create({ user: user._id, firstName, lastName, ...profileData });
     } else if (role === 'DOCTOR') {
-      await DoctorProfile.create({ user: user._id, firstName, lastName, ...profileData });
+      createdProfile = await DoctorProfile.create({ user: user._id, firstName, lastName, ...profileData });
+      
+      // Notify Admins when a new doctor registers
+      try {
+        await notifyAdmins({
+          type: 'DOCTOR_REGISTERED',
+          title: 'New Doctor Registration',
+          message: `Dr. ${firstName} ${lastName} (${email}) has registered and requires license verification.`,
+          link: '/admin-dashboard?tab=PENDING',
+          relatedId: createdProfile._id
+        });
+      } catch (notifErr) {
+        console.warn('[NOTIFY ADMINS WARNING] Doctor registration notification failed:', notifErr.message);
+      }
     }
 
     // Record Audit Log
-    await logAudit(req, { actor: user._id, role, action: 'REGISTER' });
+    try {
+      await logAudit(req, { actor: user._id, role, action: 'REGISTER' });
+    } catch (auditErr) {
+      console.warn('[AUDIT LOG WARNING]', auditErr.message);
+    }
 
     res.status(201).json({
       _id: user._id,
@@ -53,7 +99,14 @@ export const loginUser = async (req, res) => {
     if (user && (await user.matchPassword(password))) {
       if (!user.isActive) return res.status(401).json({ message: 'Account deactivated' });
       
-      await logAudit(req, { actor: user._id, role: user.role, action: 'LOGIN' });
+      // Reset failed login counter on success
+      failedAdminLogins.delete(email.trim().toLowerCase());
+
+      try {
+        await logAudit(req, { actor: user._id, role: user.role, action: 'LOGIN' });
+      } catch (auditErr) {
+        console.warn('[AUDIT LOG WARNING]', auditErr.message);
+      }
       
       res.json({
         _id: user._id,
@@ -62,6 +115,14 @@ export const loginUser = async (req, res) => {
         token: generateToken(user._id),
       });
     } else {
+      // Record failed login attempt if it's an admin attempt or potential admin account
+      if (user?.role === 'ADMIN' || req.originalUrl?.includes('admin') || req.headers['referer']?.includes('admin')) {
+        await recordFailedLogin(email);
+      } else if (!user) {
+        // Unknown user: track email in case it's an admin brute-force probe
+        await recordFailedLogin(email);
+      }
+
       res.status(401).json({ message: 'Invalid email or password' });
     }
   } catch (error) {

@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import { flushSync } from 'react-dom';
 import api from '../api/axios';
 
 const AuthContext = createContext(null);
@@ -35,8 +36,10 @@ export const AuthProvider = ({ children }) => {
     const res = await api.post('/auth/login', { email, password });
     localStorage.setItem('token', res.data.token);
     const userRes = await api.get('/auth/me');
-    setUser(userRes.data.user);
-    setProfile(userRes.data.profile);
+    flushSync(() => {
+      setUser(userRes.data.user);
+      setProfile(userRes.data.profile);
+    });
     return userRes.data.user;
   };
 
@@ -44,8 +47,10 @@ export const AuthProvider = ({ children }) => {
     const res = await api.post('/auth/register', userData);
     localStorage.setItem('token', res.data.token);
     const userRes = await api.get('/auth/me');
-    setUser(userRes.data.user);
-    setProfile(userRes.data.profile);
+    flushSync(() => {
+      setUser(userRes.data.user);
+      setProfile(userRes.data.profile);
+    });
     return userRes.data.user;
   };
 

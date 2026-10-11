@@ -209,10 +209,18 @@ export const verifyRecordIntegrity = async (req, res) => {
 
     if (status === 'VERIFIED') {
       await logAudit(req, { actor: req.user._id, role: req.user.role, action: 'VERIFY_RECORD', resourceType: 'MedicalRecord', resourceId: record._id, relatedPatient: record.patient, forceLog: req.query.forceLog === 'true' });
+      if (req.user.role === 'DOCTOR' && req.query.forceLog === 'true') {
+        await Notification.create({
+          user: req.user._id,
+          type: 'RECORD_VERIFIED',
+          message: `You successfully verified record ${record._id}.`,
+          relatedId: record._id
+        });
+      }
     } else {
       await logAudit(req, { actor: req.user._id, role: req.user.role, action: 'VERIFY_RECORD_FAILED', resourceType: 'MedicalRecord', resourceId: record._id, relatedPatient: record.patient });
       
-      if (status === 'INTEGRITY_CHECK_FAILED') {
+      if (status === 'TAMPERED') {
         const tenMinsAgo = new Date(Date.now() - 10 * 60 * 1000);
         const recent = await Notification.findOne({
           user: record.patient,

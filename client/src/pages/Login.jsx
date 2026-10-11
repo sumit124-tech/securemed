@@ -191,6 +191,10 @@ const Login = () => {
           <div style={{ textAlign: 'center', marginTop: '2rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
             Don't have an account? <Link to="/register" className="auth-link">Create Account</Link>
           </div>
+
+          <div style={{ textAlign: 'center', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border-light)', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+            Are you an administrator? <Link to="/admin-login" className="auth-link">Admin Portal &rarr;</Link>
+          </div>
         </div>
       </div>
     </div>

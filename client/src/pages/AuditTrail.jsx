@@ -1,16 +1,22 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api/axios';
 import { Activity, ShieldAlert, CheckCircle2, FileText, UserPlus, ShieldCheck, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const AuditTrail = () => {
+  const [searchParams] = useSearchParams();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
-  // Filters
+  // Filters: parse 'from' query parameter if provided (e.g. ISO string or YYYY-MM-DD)
+  const initialFrom = searchParams.get('from') || searchParams.get('startDate') || '';
+  const formattedInitialStart = initialFrom 
+    ? (initialFrom.length >= 10 ? initialFrom.substring(0, 10) : initialFrom) 
+    : '';
+
   const [filterAction, setFilterAction] = useState('ALL');
-  const [startDate, setStartDate] = useState('');
+  const [startDate, setStartDate] = useState(formattedInitialStart);
   const [endDate, setEndDate] = useState('');
   
   // Pagination
@@ -32,13 +38,26 @@ const AuditTrail = () => {
       params.append('page', page);
       params.append('limit', 20);
       if (filterAction !== 'ALL') params.append('action', filterAction);
-      if (startDate) params.append('startDate', startDate);
+      
+      // If startDate equals initial formatted from, and initialFrom was an ISO string, use initialFrom
+      if (startDate) {
+        const apiStartDate = (startDate === formattedInitialStart && initialFrom.includes('T'))
+          ? initialFrom
+          : startDate;
+        params.append('startDate', apiStartDate);
+      }
       if (endDate) params.append('endDate', endDate);
       
       const res = await api.get(`/audit/my?${params.toString()}`);
       if (res.data && res.data.logs) {
-        setLogs(res.data.logs);
-        setTotalPages(res.data.totalPages);
+        let fetchedLogs = res.data.logs;
+        // Extra client-side precision guard if filtering by exact 24h ISO date
+        if (startDate === formattedInitialStart && initialFrom.includes('T')) {
+          const fromTimestamp = new Date(initialFrom).getTime();
+          fetchedLogs = fetchedLogs.filter(log => new Date(log.timestamp).getTime() >= fromTimestamp);
+        }
+        setLogs(fetchedLogs);
+        setTotalPages(res.data.totalPages || 1);
       } else {
         // Fallback for older api
         setLogs(Array.isArray(res.data) ? res.data : res);

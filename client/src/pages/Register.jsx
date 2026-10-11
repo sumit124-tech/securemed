@@ -1,23 +1,33 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Shield, User, HeartPulse, AlertCircle, CheckCircle2, Activity, Mail, Lock, Eye, EyeOff, Calendar, Briefcase, Hash } from 'lucide-react';
 
+const initialFormState = {
+  email: '',
+  password: '',
+  role: 'PATIENT',
+  firstName: '',
+  lastName: '',
+  dob: '',
+  specialization: '', 
+  licenseNumber: '' 
+};
+
 const Register = () => {
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    role: 'PATIENT',
-    firstName: '',
-    lastName: '',
-    dob: '',
-    specialization: '', 
-    licenseNumber: '' 
-  });
+  const [formData, setFormData] = useState(initialFormState);
   const [error, setError] = useState('');
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Reset form on component mount
+  useEffect(() => {
+    setFormData(initialFormState);
+    setError('');
+    setErrors({});
+    setShowPassword(false);
+  }, []);
 
   // Password strength helper
   const getPasswordStrength = (pass) => {
@@ -38,10 +48,28 @@ const Register = () => {
   const { register } = useAuth();
   const navigate = useNavigate();
 
+  // Reset form when switching roles
+  const handleRoleChange = (newRole) => {
+    if (newRole === formData.role) return;
+    setFormData({
+      ...initialFormState,
+      role: newRole
+    });
+    setError('');
+    setErrors({});
+    setShowPassword(false);
+  };
+
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-    if (errors[e.target.name]) {
-      setErrors({ ...errors, [e.target.name]: null });
+    const { name, value } = e.target;
+    if (name === 'role') {
+      handleRoleChange(value);
+      return;
+    }
+
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: null }));
     }
   };
 
@@ -50,15 +78,15 @@ const Register = () => {
     
     // Basic validation
     const newErrors = {};
-    if (!formData.firstName) newErrors.firstName = "Enter your first name";
-    if (!formData.lastName) newErrors.lastName = "Enter your last name";
-    if (!formData.email || !/^\S+@\S+\.\S+$/.test(formData.email)) newErrors.email = "Enter a valid email address";
+    if (!formData.firstName.trim()) newErrors.firstName = "Enter your first name";
+    if (!formData.lastName.trim()) newErrors.lastName = "Enter your last name";
+    if (!formData.email.trim() || !/^\S+@\S+\.\S+$/.test(formData.email.trim())) newErrors.email = "Enter a valid email address";
     if (!formData.password || formData.password.length < 6) newErrors.password = "Password must be at least 6 characters";
     
     if (formData.role === 'PATIENT' && !formData.dob) newErrors.dob = "Enter your date of birth";
     if (formData.role === 'DOCTOR') {
-      if (!formData.specialization) newErrors.specialization = "Enter your medical specialty";
-      if (!formData.licenseNumber) newErrors.licenseNumber = "Enter your license number";
+      if (!formData.specialization.trim()) newErrors.specialization = "Enter your medical specialty";
+      if (!formData.licenseNumber.trim()) newErrors.licenseNumber = "Enter your license number";
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -71,10 +99,16 @@ const Register = () => {
 
     try {
       const user = await register(formData);
+      // Reset form state on successful registration
+      setFormData(initialFormState);
+      setErrors({});
+      setShowPassword(false);
+      
       if (user.role === 'DOCTOR') navigate('/doctor-dashboard');
       else if (user.role === 'PATIENT') navigate('/patient-dashboard');
       else navigate('/');
     } catch (err) {
+      // Keep form data on server validation error so user doesn't lose inputs
       if (!err.response) {
         setError('Cannot reach server. Please check your connection or try again later.');
       } else {
@@ -151,7 +185,7 @@ const Register = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} noValidate>
+          <form onSubmit={handleSubmit} noValidate autoComplete="off">
             {/* Role Selection */}
             <div className="role-selector" role="radiogroup" aria-label="Select Role">
               <input type="radio" id="role-patient" name="role" className="role-radio" value="PATIENT" checked={formData.role === 'PATIENT'} onChange={handleChange} />
@@ -171,7 +205,7 @@ const Register = () => {
               <div className="form-group">
                 <label className="form-label" htmlFor="firstName">Legal First Name</label>
                 <div className="input-wrapper">
-                  <input id="firstName" type="text" name="firstName" placeholder="John" className="form-control" value={formData.firstName} onChange={handleChange} aria-invalid={!!errors.firstName} />
+                  <input id="firstName" type="text" name="firstName" placeholder="John" autoComplete="off" className="form-control" value={formData.firstName} onChange={handleChange} aria-invalid={!!errors.firstName} />
                   <User className="input-icon-leading" size={18} />
                 </div>
                 {errors.firstName && <span className="form-error">{errors.firstName}</span>}
@@ -179,7 +213,7 @@ const Register = () => {
               <div className="form-group">
                 <label className="form-label" htmlFor="lastName">Legal Last Name</label>
                 <div className="input-wrapper">
-                  <input id="lastName" type="text" name="lastName" placeholder="Doe" className="form-control" value={formData.lastName} onChange={handleChange} aria-invalid={!!errors.lastName} />
+                  <input id="lastName" type="text" name="lastName" placeholder="Doe" autoComplete="off" className="form-control" value={formData.lastName} onChange={handleChange} aria-invalid={!!errors.lastName} />
                   <User className="input-icon-leading" size={18} />
                 </div>
                 {errors.lastName && <span className="form-error">{errors.lastName}</span>}
@@ -189,7 +223,7 @@ const Register = () => {
             <div className="form-group">
               <label className="form-label" htmlFor="email">Email Address</label>
               <div className="input-wrapper">
-                <input id="email" type="email" name="email" placeholder="name@hospital.org" className="form-control" value={formData.email} onChange={handleChange} aria-invalid={!!errors.email} />
+                <input id="email" type="email" name="email" placeholder="name@hospital.org" autoComplete="off" className="form-control" value={formData.email} onChange={handleChange} aria-invalid={!!errors.email} />
                 <Mail className="input-icon-leading" size={18} />
               </div>
               {errors.email && <span className="form-error">{errors.email}</span>}
@@ -198,7 +232,7 @@ const Register = () => {
             <div className="form-group">
               <label className="form-label" htmlFor="password">Secure Password</label>
               <div className="input-wrapper">
-                <input id="password" type={showPassword ? 'text' : 'password'} name="password" placeholder="••••••••" className="form-control" style={{ paddingRight: '2.5rem' }} value={formData.password} onChange={handleChange} aria-invalid={!!errors.password} />
+                <input id="password" type={showPassword ? 'text' : 'password'} name="password" placeholder="••••••••" autoComplete="new-password" className="form-control" value={formData.password} onChange={handleChange} aria-invalid={!!errors.password} />
                 <Lock className="input-icon-leading" size={18} />
                 <div className="input-icon-trailing">
                   <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "Hide password" : "Show password"}>
@@ -221,7 +255,7 @@ const Register = () => {
               <div className="form-group">
                 <label className="form-label" htmlFor="dob">Date of Birth</label>
                 <div className="input-wrapper">
-                  <input id="dob" type="date" name="dob" className="form-control" value={formData.dob} onChange={handleChange} aria-invalid={!!errors.dob} />
+                  <input id="dob" type="date" name="dob" autoComplete="off" className="form-control" value={formData.dob} onChange={handleChange} aria-invalid={!!errors.dob} />
                   <Calendar className="input-icon-leading" size={18} />
                 </div>
                 {errors.dob && <span className="form-error">{errors.dob}</span>}
@@ -233,7 +267,7 @@ const Register = () => {
                 <div className="form-group">
                   <label className="form-label" htmlFor="specialization">Medical Specialty</label>
                   <div className="input-wrapper">
-                    <input id="specialization" type="text" name="specialization" placeholder="Neurology" className="form-control" value={formData.specialization} onChange={handleChange} aria-invalid={!!errors.specialization} />
+                    <input id="specialization" type="text" name="specialization" placeholder="Neurology" autoComplete="off" className="form-control" value={formData.specialization} onChange={handleChange} aria-invalid={!!errors.specialization} />
                     <Briefcase className="input-icon-leading" size={18} />
                   </div>
                   {errors.specialization && <span className="form-error">{errors.specialization}</span>}
@@ -241,7 +275,7 @@ const Register = () => {
                 <div className="form-group">
                   <label className="form-label" htmlFor="licenseNumber">License Number</label>
                   <div className="input-wrapper">
-                    <input id="licenseNumber" type="text" name="licenseNumber" placeholder="State License ID" className="form-control" value={formData.licenseNumber} onChange={handleChange} aria-invalid={!!errors.licenseNumber} />
+                    <input id="licenseNumber" type="text" name="licenseNumber" placeholder="State License ID" autoComplete="off" className="form-control" value={formData.licenseNumber} onChange={handleChange} aria-invalid={!!errors.licenseNumber} />
                     <Hash className="input-icon-leading" size={18} />
                   </div>
                   {errors.licenseNumber && <span className="form-error">{errors.licenseNumber}</span>}

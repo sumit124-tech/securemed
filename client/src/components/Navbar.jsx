@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Shield, LogOut, User, Bell, Check, CheckCheck, ShieldAlert, Users, FileText, X, ShieldCheck } from 'lucide-react';
-import axios from 'axios';
+import api from '../api/axios';
 
 const Navbar = () => {
   const { user, profile, logout } = useAuth();
@@ -17,11 +17,9 @@ const Navbar = () => {
     
     const fetchNotifications = async () => {
       try {
-        const token = localStorage.getItem('token');
-        const res = await axios.get('/api/notifications', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setNotifications(res.data);
+        const res = await api.get('/notifications');
+        const list = Array.isArray(res.data) ? res.data : Array.isArray(res.data?.data) ? res.data.data : [];
+        setNotifications(list);
       } catch (err) {
         console.error('Failed to fetch notifications', err);
       }
@@ -74,10 +72,7 @@ const Navbar = () => {
       e.preventDefault();
     }
     try {
-      const token = localStorage.getItem('token');
-      await axios.put(`/api/notifications/${id}/read`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.patch(`/notifications/${id}/read`);
       setNotifications(notifications.map(n => n._id === id ? { ...n, isRead: true } : n));
     } catch (err) {
       console.error(err);
@@ -85,13 +80,12 @@ const Navbar = () => {
   };
 
   const handleMarkAllAsRead = async (e) => {
-    e.stopPropagation();
-    e.preventDefault();
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     try {
-      const token = localStorage.getItem('token');
-      await axios.put('/api/notifications/read-all', {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.patch('/notifications/read-all');
       setNotifications(notifications.map(n => ({ ...n, isRead: true })));
     } catch (err) {
       console.error(err);
@@ -104,11 +98,18 @@ const Navbar = () => {
     }
     setShowDropdown(false);
     
-    // Navigate based on type
+    // Priority: Follow notification.link if provided
+    if (notification.link) {
+      navigate(notification.link);
+      return;
+    }
+
     if (user.role === 'PATIENT') {
       navigate('/patient-dashboard');
-    } else {
+    } else if (user.role === 'DOCTOR') {
       navigate('/doctor-dashboard');
+    } else {
+      navigate('/admin-dashboard');
     }
   };
 
@@ -179,8 +180,10 @@ const Navbar = () => {
                   </div>
                   
                   {notifications.length === 0 ? (
-                    <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                      No notifications yet.
+                    <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                      <Check size={28} style={{ color: 'var(--success)', margin: '0 auto 0.5rem', display: 'block' }} />
+                      <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.25rem' }}>You're all caught up</div>
+                      <span style={{ fontSize: '0.75rem' }}>No new notifications at this time.</span>
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -227,7 +230,11 @@ const Navbar = () => {
             <div className="user-info">
               <User className="user-icon" />
               <span className="user-name">
-                {profile?.firstName} {profile?.lastName}
+                {profile?.firstName 
+                  ? `${user.role === 'DOCTOR' ? 'Dr. ' : ''}${profile.firstName} ${profile.lastName || ''}`
+                  : user.role === 'ADMIN'
+                  ? 'Admin'
+                  : (user.email?.split('@')[0] || 'User')}
               </span>
               <span className="user-role badge">{user.role}</span>
             </div>

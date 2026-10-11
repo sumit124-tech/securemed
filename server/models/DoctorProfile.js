@@ -7,7 +7,20 @@ const doctorProfileSchema = new mongoose.Schema({
   specialization: { type: String, required: true },
   licenseNumber: { type: String, required: true, unique: true },
   hospitalAffiliation: { type: String },
-  isVerified: { type: Boolean, default: false } // Must be verified by ADMIN before accessing records
+  isVerified: { type: Boolean, default: false }, // Must be verified by ADMIN before accessing records
+  verificationStatus: { 
+    type: String, 
+    enum: ['PENDING', 'VERIFIED', 'REJECTED'], 
+    default: 'PENDING' 
+  },
+  rejectionReason: { type: String, default: null },
+  rejectedAt: { type: Date, default: null },
+  reverificationReason: { type: String, default: null },
+  documents: [{
+    name: { type: String },
+    url: { type: String },
+    uploadedAt: { type: Date, default: Date.now }
+  }]
 }, { timestamps: true });
 
 export default mongoose.model('DoctorProfile', doctorProfileSchema);

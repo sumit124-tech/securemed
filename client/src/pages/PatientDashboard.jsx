@@ -4,7 +4,7 @@ import { getPatientRecords } from '../api/records';
 import { respondToAccess, revokeAccess, getMyRequests } from '../api/access';
 import { FileText, ShieldAlert, CheckCircle, XCircle, Clock, CheckCircle2, ShieldCheck, UserCheck, Inbox, Copy, Activity } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
+import api from '../api/axios';
 
 const PatientDashboard = () => {
   const { user, profile } = useAuth();
@@ -74,8 +74,7 @@ const PatientDashboard = () => {
     try {
       setLoadingLogs(true);
       setLogsError(false);
-      const token = localStorage.getItem('token');
-      const res = await axios.get('/api/audit/my', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await api.get('/audit/my');
       setLogs(toArray(res).slice(0, 5));
     } catch (err) {
       setLogsError(true);

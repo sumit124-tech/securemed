@@ -88,11 +88,15 @@ const DoctorDashboard = () => {
       </div>
 
       {!profile?.isVerified && (
-        <div className="alert alert-warning" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2rem' }}>
-          <AlertTriangle size={24} />
+        <div className={`alert ${profile?.verificationStatus === 'REJECTED' ? 'alert-danger' : 'alert-warning'}`} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2rem' }}>
+          <AlertTriangle size={24} style={{ flexShrink: 0 }} />
           <div>
-            <strong>Account Not Verified</strong>
-            <p style={{ margin: 0, fontSize: '0.875rem' }}>Your account is pending administrator verification. You cannot request access to patient records until verified.</p>
+            <strong>{profile?.verificationStatus === 'REJECTED' ? 'Verification Rejected' : 'Account Not Verified'}</strong>
+            <p style={{ margin: 0, fontSize: '0.875rem' }}>
+              {profile?.verificationStatus === 'REJECTED' && profile?.rejectionReason
+                ? `Your application was rejected by an administrator. Reason: "${profile.rejectionReason}". Please update your details or contact administration.`
+                : 'Your account is pending administrator verification. You cannot request access to patient records until verified.'}
+            </p>
           </div>
         </div>
       )}

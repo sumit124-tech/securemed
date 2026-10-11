@@ -7,6 +7,7 @@ const auditLogSchema = new mongoose.Schema({
   resourceType: { type: String }, // e.g., 'MedicalRecord', 'AccessRequest'
   resourceId: { type: mongoose.Schema.Types.ObjectId },
   relatedPatient: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  details: { type: String }, // e.g., rejection reason or additional metadata
   ipAddress: { type: String },
   timestamp: { type: Date, default: Date.now }
 });

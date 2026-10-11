@@ -12,10 +12,12 @@
   margin-bottom: 8px;
 }
 
-.field {
+.field,
+.input-wrapper {
   position: relative;
   display: flex;
   align-items: center;
+  width: 100%;
 }
 
 .input-icon-leading {
@@ -28,7 +30,7 @@
   color: #94A3B8;
   transition: color 200ms ease;
   pointer-events: none;
-  z-index: 1;
+  z-index: 2;
 }
 
 .input-icon-trailing {
@@ -42,7 +44,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1;
+  z-index: 2;
 }
 
 .input-icon-trailing button {
@@ -71,21 +73,28 @@
   border-radius: 12px;
   font-size: 1rem;
   color: #0F172A;
+  box-sizing: border-box;
   transition: border-color 200ms ease, box-shadow 200ms ease, background-color 200ms ease;
 }
 
-/* Specificity fix for padding */
-.field input.form-control {
+/* Ensure no text overlap with leading and trailing icons */
+.field input.form-control,
+.field select.form-control,
+.input-wrapper input.form-control,
+.input-wrapper select.form-control {
   box-sizing: border-box;
   width: 100%;
   padding-left: 44px !important;
 }
-.field input.form-control[type="password"] {
+
+.field input.form-control[type="password"],
+.input-wrapper input.form-control[type="password"] {
   padding-right: 44px !important;
 }
 
-/* Hide native date picker icon to use our custom one */
-.field input[type="date"].form-control::-webkit-calendar-picker-indicator {
+/* Hide native date picker indicator to use our custom Lucide icon */
+.field input[type="date"].form-control::-webkit-calendar-picker-indicator,
+.input-wrapper input[type="date"].form-control::-webkit-calendar-picker-indicator {
   display: none;
   -webkit-appearance: none;
 }

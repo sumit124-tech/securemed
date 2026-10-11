@@ -77,3 +77,43 @@ export const getMySentRequests = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// @desc    Upload or update doctor verification documents
+// @route   POST /api/doctor/documents
+// @access  Private/Doctor
+export const uploadDoctorDocuments = async (req, res) => {
+  try {
+    const doctorId = req.user._id;
+    const { documents } = req.body; // array of { name, url }
+
+    if (!Array.isArray(documents) || documents.length === 0) {
+      return res.status(400).json({ message: 'At least one document is required.' });
+    }
+
+    const doctorProfile = await getDoctorProfile(doctorId);
+    if (!doctorProfile) {
+      return res.status(404).json({ message: 'Doctor profile not found.' });
+    }
+
+    doctorProfile.documents = documents;
+    await doctorProfile.save();
+
+    // Notify admins that doctor uploaded/updated documents
+    try {
+      const { notifyAdmins } = await import('../utils/notifyHelper.js');
+      await notifyAdmins({
+        type: 'DOCTOR_DOCUMENTS_UPLOADED',
+        title: 'Doctor Documents Uploaded',
+        message: `Dr. ${doctorProfile.firstName || ''} ${doctorProfile.lastName || ''} uploaded verification documents.`,
+        link: '/admin-dashboard?tab=PENDING',
+        relatedId: doctorProfile._id
+      });
+    } catch (notifErr) {
+      console.warn('[NOTIFY ADMINS WARNING] Doctor document notification failed:', notifErr.message);
+    }
+
+    res.json({ success: true, message: 'Documents uploaded successfully.', documents: doctorProfile.documents });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
