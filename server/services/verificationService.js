@@ -47,7 +47,34 @@ export const verifyRecordStatus = async (record) => {
     };
   }
 
-  // 3. Check for missing blockchain transaction
+  // 3. Check if record is waiting in the retry queue
+  if (record.verificationStatus === 'PENDING_ANCHOR') {
+    return {
+      status: 'PENDING_ANCHOR',
+      isVerified: false,
+      calculatedHash,
+      storedHash: storedFingerprint,
+      blockchainHash: null,
+      blockchainTxHash: null,
+      reason: 'WAITING_FOR_BLOCKCHAIN_ANCHOR'
+    };
+  }
+
+  // Check if record permanently failed after 5 attempts
+  if (record.verificationStatus === 'ANCHOR_FAILED') {
+    return {
+      status: 'ANCHOR_FAILED',
+      isVerified: false,
+      calculatedHash,
+      storedHash: storedFingerprint,
+      blockchainHash: null,
+      blockchainTxHash: null,
+      reason: 'MAX_ANCHOR_RETRIES_EXCEEDED',
+      error: record.anchorError || null
+    };
+  }
+
+  // 4. Check for missing blockchain transaction
   // A record without a transaction receipt was never anchored; this is NOT tampering.
   if (!record.blockchainTxHash) {
     return {
@@ -174,6 +201,5 @@ export const verifyRecordStatus = async (record) => {
     contractAddress: currentContract,
     reason: 'ON_CHAIN_HASH_MISMATCH'
   };
-};
-
+export const computeIntegrityStatus = verifyRecordStatus;
 export default verifyRecordStatus;

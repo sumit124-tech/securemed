@@ -10,6 +10,9 @@ import { notifyAdmins, createNotification } from '../utils/notifyHelper.js';
 import blockchainService from '../services/blockchainService.js';
 import { getChainResetStatus } from '../services/chainResetService.js';
 import { reanchorRecords } from '../scripts/reanchorRecords.js';
+import { processAnchorQueue, isAnchorQueueRunning } from '../jobs/anchorQueue.js';
+import IntegrityAuditRun from '../models/IntegrityAuditRun.js';
+import { runIntegrityAudit, isIntegrityAuditRunning } from '../jobs/integrityAudit.js';
 
 // Track last known service status in-memory to notify admins only once per outage
 const lastHealthStatus = {
@@ -122,6 +125,14 @@ export const getSystemHealth = async (req, res) => {
       blockchain.chainResetWarning = null;
     }
 
+    // 5. Pending Anchor Queue Inspection
+    try {
+      const pendingCount = await MedicalRecord.countDocuments({ verificationStatus: 'PENDING_ANCHOR' });
+      blockchain.pendingAnchorCount = pendingCount;
+    } catch (paErr) {
+      blockchain.pendingAnchorCount = 0;
+    }
+
     return res.json({
       success: true,
       data: {
@@ -187,6 +198,112 @@ export const reanchorRecordsController = async (req, res) => {
     });
   }
 };
+
+// @desc    Manually trigger retry queue for pending anchors (Admin only)
+// @route   POST /api/admin/retry-anchor
+// @access  Private/Admin
+export const retryAnchorQueueController = async (req, res) => {
+  try {
+    const summary = await processAnchorQueue({ calledBy: `Admin (${req.user.email})` });
+
+    try {
+      await logAudit(req, {
+        actor: req.user._id,
+        role: 'ADMIN',
+        action: 'ADMIN_RETRY_ANCHOR_QUEUE',
+        resourceType: 'System',
+        resourceLabel: 'Blockchain Anchor Queue',
+        details: `Manual anchor queue trigger by ${req.user.email}: ${summary.anchored || 0} anchored, ${summary.failed || 0} failed, ${summary.pendingRemaining || 0} pending remaining.`
+      });
+    } catch (auditError) {
+      console.warn('[AUDIT WARNING] Failed to record retry anchor audit log:', auditError.message);
+    }
+
+    return res.json({
+      success: true,
+      message: summary.message || 'Anchor retry completed',
+      data: summary
+    });
+  } catch (error) {
+    console.error('retryAnchorQueueController error:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Manually trigger an integrity audit (Admin only)
+// @route   POST /api/admin/integrity-audit/run
+// @access  Private/Admin
+export const runIntegrityAuditController = async (req, res) => {
+  try {
+    if (isIntegrityAuditRunning()) {
+      return res.status(409).json({
+        success: false,
+        message: 'An integrity audit is already in progress'
+      });
+    }
+
+    if (typeof isAnchorQueueRunning === 'function' && isAnchorQueueRunning()) {
+      return res.status(409).json({
+        success: false,
+        message: 'Anchor queue is currently active. Please try again shortly.'
+      });
+    }
+
+    try {
+      await logAudit(req, {
+        actor: req.user._id,
+        role: 'ADMIN',
+        action: 'ADMIN_RAN_INTEGRITY_AUDIT',
+        resourceType: 'System',
+        resourceLabel: 'Integrity Audit',
+        details: `Manual integrity audit initiated by ${req.user.email}`
+      });
+    } catch (auditErr) {
+      console.warn('[AUDIT WARNING] Failed to record manual audit run log:', auditErr.message);
+    }
+
+    const result = await runIntegrityAudit({
+      trigger: 'MANUAL',
+      triggeredBy: req.user.email
+    });
+
+    if (result.status === 'LOCKED') {
+      return res.status(409).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: result.message,
+      data: result.auditRun || result
+    });
+  } catch (error) {
+    console.error('runIntegrityAuditController error:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Get latest integrity audit runs (Admin only)
+// @route   GET /api/admin/integrity-audit/latest
+// @access  Private/Admin
+export const getLatestIntegrityAuditsController = async (req, res) => {
+  try {
+    const runs = await IntegrityAuditRun.find()
+      .sort({ startedAt: -1 })
+      .limit(10);
+
+    return res.json({
+      success: true,
+      data: runs
+    });
+  } catch (error) {
+    console.error('getLatestIntegrityAuditsController error:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 
 
 // @desc    Get dashboard statistics for admin

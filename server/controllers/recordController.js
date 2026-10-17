@@ -65,7 +65,7 @@ export const createRecord = async (req, res) => {
 
     // 3. Save Record off-chain (in MongoDB)
     const newRecordId = new mongoose.Types.ObjectId();
-    const newRecord = await MedicalRecord.create({
+    const newRecord = new MedicalRecord({
       _id: newRecordId,
       ...recordData,
       currentHash: hash,
@@ -73,8 +73,20 @@ export const createRecord = async (req, res) => {
     });
 
     // 4. Anchor Hash on Blockchain
-    const blockchainData = await blockchainService.storeHash(newRecord._id, hash);
-    newRecord.blockchainTxHash = blockchainData.txHash;
+    try {
+      const blockchainData = await blockchainService.storeHash(newRecord._id, hash);
+      newRecord.blockchainTxHash = blockchainData.txHash;
+      newRecord.contractAddress = blockchainData.contractAddress || blockchainService.getContractAddress();
+      newRecord.anchoredAt = new Date();
+      newRecord.verificationStatus = 'VERIFIED';
+      newRecord.anchorAttempts = 0;
+    } catch (bcErr) {
+      console.warn(`[ANCHOR WARNING] Failed to anchor record #${newRecord._id} immediately: ${bcErr.message}. Queuing with PENDING_ANCHOR.`);
+      newRecord.verificationStatus = 'PENDING_ANCHOR';
+      newRecord.anchorAttempts = 1;
+      newRecord.lastAnchorAttemptAt = new Date();
+      newRecord.anchorError = bcErr.message;
+    }
     await newRecord.save();
 
     await logAudit(req, { 
@@ -295,7 +307,7 @@ export const editRecord = async (req, res) => {
 
     // 3. Save New Version off-chain (in MongoDB)
     const newRecordId = new mongoose.Types.ObjectId();
-    const newRecord = await MedicalRecord.create({
+    const newRecord = new MedicalRecord({
       _id: newRecordId,
       ...recordData,
       currentHash: hash,
@@ -306,8 +318,20 @@ export const editRecord = async (req, res) => {
     });
 
     // 4. Anchor Hash on Blockchain
-    const blockchainData = await blockchainService.storeHash(newRecord._id, hash);
-    newRecord.blockchainTxHash = blockchainData.txHash;
+    try {
+      const blockchainData = await blockchainService.storeHash(newRecord._id, hash);
+      newRecord.blockchainTxHash = blockchainData.txHash;
+      newRecord.contractAddress = blockchainData.contractAddress || blockchainService.getContractAddress();
+      newRecord.anchoredAt = new Date();
+      newRecord.verificationStatus = 'VERIFIED';
+      newRecord.anchorAttempts = 0;
+    } catch (bcErr) {
+      console.warn(`[ANCHOR WARNING] Failed to anchor record version #${newRecord._id} immediately: ${bcErr.message}. Queuing with PENDING_ANCHOR.`);
+      newRecord.verificationStatus = 'PENDING_ANCHOR';
+      newRecord.anchorAttempts = 1;
+      newRecord.lastAnchorAttemptAt = new Date();
+      newRecord.anchorError = bcErr.message;
+    }
     await newRecord.save();
 
     await logAudit(req, { 

@@ -24,11 +24,12 @@ import {
   Copy,
   CheckCheck,
   Clock,
-  ExternalLink
+  ExternalLink,
+  ShieldAlert
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 
 const AdminDashboard = () => {
   const { user } = useAuth();
@@ -73,6 +74,13 @@ const AdminDashboard = () => {
   const [healthExpanded, setHealthExpanded] = useState(false); // Collapsible panel state
   const [reanchoring, setReanchoring] = useState(false);
   const [reanchorResult, setReanchorResult] = useState(null);
+  const [retryingQueue, setRetryingQueue] = useState(false);
+
+  // Integrity Audit State
+  const [auditRuns, setAuditRuns] = useState([]);
+  const [auditLoading, setAuditLoading] = useState(true);
+  const [auditRunning, setAuditRunning] = useState(false);
+  const [auditError, setAuditError] = useState('');
 
   // Ref for smooth scrolling to Doctor Verifications section
   const doctorVerificationsRef = useRef(null);
@@ -97,9 +105,10 @@ const AdminDashboard = () => {
     fetchDoctors();
   }, [activeTab, page, debouncedSearch]);
 
-  // Initial fetch stats
+  // Initial fetch stats and audit runs
   useEffect(() => {
     fetchStats();
+    fetchAuditRuns();
   }, []);
 
   // Fetch health on mount and auto-refresh every 30 seconds
@@ -158,11 +167,57 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleRetryAnchorQueue = async () => {
+    try {
+      setRetryingQueue(true);
+      const res = await api.post('/admin/retry-anchor');
+      if (res.data?.success) {
+        toast.success(res.data.message || 'Anchor retry completed');
+        await Promise.all([fetchHealth(false), fetchStats()]);
+      }
+    } catch (err) {
+      console.error('Retry anchor queue failed:', err);
+      const msg = err.response?.data?.message || err.message || 'Failed to retry anchor queue';
+      toast.error(`Retry error: ${msg}`);
+    } finally {
+      setRetryingQueue(false);
+    }
+  };
+
   const handleCopyContract = (address) => {
     if (!address) return;
     navigator.clipboard.writeText(address);
     setCopiedAddress(true);
     setTimeout(() => setCopiedAddress(false), 2000);
+  };
+
+  const fetchAuditRuns = async () => {
+    try {
+      setAuditLoading(true);
+      setAuditError('');
+      const res = await api.get('/admin/integrity-audit/latest');
+      setAuditRuns(res.data?.data || []);
+    } catch (err) {
+      console.error('Fetch integrity audit runs error:', err);
+      setAuditError(err.response?.data?.message || 'Failed to load integrity audit records');
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  const handleRunIntegrityAudit = async () => {
+    try {
+      setAuditRunning(true);
+      const res = await api.post('/admin/integrity-audit/run');
+      toast.success(res.data?.message || 'Integrity audit completed successfully');
+      await fetchAuditRuns();
+    } catch (err) {
+      console.error('Run integrity audit error:', err);
+      const errMsg = err.response?.data?.message || 'Failed to trigger integrity audit';
+      toast.error(errMsg);
+    } finally {
+      setAuditRunning(false);
+    }
   };
 
   const fetchStats = async () => {
@@ -1137,6 +1192,55 @@ const AdminDashboard = () => {
         </div>
       )}
 
+      {/* Pending Anchor Queue Banner with Retry now button */}
+      {health?.blockchain?.pendingAnchorCount > 0 && (
+        <div 
+          style={{ 
+            margin: '0.75rem 1.25rem 1rem', 
+            padding: '0.85rem 1.25rem', 
+            background: 'rgba(59, 130, 246, 0.08)', 
+            border: '1px solid rgba(59, 130, 246, 0.3)', 
+            borderRadius: '10px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '1rem',
+            flexWrap: 'wrap'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <Clock size={20} style={{ color: '#2563EB', flexShrink: 0 }} />
+            <div>
+              <strong style={{ fontSize: '0.9rem', color: '#1E40AF', display: 'block' }}>
+                {health.blockchain.pendingAnchorCount} {health.blockchain.pendingAnchorCount === 1 ? 'record waiting to anchor' : 'records waiting to anchor'}
+              </strong>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Auto-retried every 60 seconds by background worker, or trigger manually now.
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleRetryAnchorQueue}
+            disabled={retryingQueue || health?.blockchain?.status === 'down'}
+            className="btn btn-primary"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              fontSize: '0.85rem',
+              padding: '0.45rem 1rem',
+              borderRadius: '8px'
+            }}
+            title={health?.blockchain?.status === 'down' ? 'Blockchain node must be running to retry' : 'Retry pending records now'}
+          >
+            <RefreshCw size={14} className={retryingQueue ? 'animate-spin' : ''} />
+            {retryingQueue ? 'Retrying...' : 'Retry now'}
+          </button>
+        </div>
+      )}
+
       {healthExpanded && (
           healthError ? (
             <div 
@@ -1389,6 +1493,17 @@ const AdminDashboard = () => {
                         <span>Not configured</span>
                       )}
                     </div>
+
+                    <div>
+                      <span style={{ color: 'var(--text-main)', fontWeight: 500 }}>Pending Queue: </span>
+                      {(health?.blockchain?.pendingAnchorCount || 0) > 0 ? (
+                        <span style={{ color: '#2563EB', fontWeight: 600 }}>
+                          {health.blockchain.pendingAnchorCount} waiting to anchor
+                        </span>
+                      ) : (
+                        <span style={{ color: 'var(--success)' }}>0 waiting</span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1422,6 +1537,242 @@ const AdminDashboard = () => {
               )}
             </div>
           )
+        )}
+      </div>
+
+      {/* Cryptographic Integrity Audit Card */}
+      <div 
+        className="card" 
+        style={{ 
+          padding: '1.25rem 1.5rem', 
+          marginTop: '1.75rem',
+          borderRadius: 'var(--radius-lg, 12px)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+            <div 
+              style={{ 
+                width: '32px', 
+                height: '32px', 
+                borderRadius: '8px', 
+                background: auditRuns[0]?.counts?.tampered > 0 
+                  ? 'rgba(239, 68, 68, 0.12)' 
+                  : 'rgba(16, 185, 129, 0.12)', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                color: auditRuns[0]?.counts?.tampered > 0 ? 'var(--danger)' : 'var(--success)'
+              }}
+            >
+              {auditRuns[0]?.counts?.tampered > 0 ? <ShieldAlert size={18} /> : <ShieldCheck size={18} />}
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                  Integrity Audit
+                </h3>
+                {auditRuns.length > 0 ? (
+                  <span 
+                    style={{ 
+                      display: 'inline-flex', 
+                      alignItems: 'center', 
+                      gap: '0.3rem', 
+                      fontSize: '0.7rem', 
+                      padding: '0.1rem 0.5rem', 
+                      borderRadius: '999px',
+                      background: auditRuns[0]?.status === 'SKIPPED'
+                        ? 'rgba(245, 158, 11, 0.12)'
+                        : auditRuns[0]?.counts?.tampered > 0 
+                        ? 'rgba(239, 68, 68, 0.12)' 
+                        : 'rgba(16, 185, 129, 0.12)',
+                      color: auditRuns[0]?.status === 'SKIPPED'
+                        ? 'var(--warning)'
+                        : auditRuns[0]?.counts?.tampered > 0 
+                        ? 'var(--danger)' 
+                        : 'var(--success)',
+                      fontWeight: 600
+                    }}
+                  >
+                    <span 
+                      style={{ 
+                        width: '6px', 
+                        height: '6px', 
+                        borderRadius: '50%', 
+                        background: auditRuns[0]?.status === 'SKIPPED'
+                          ? 'var(--warning)'
+                          : auditRuns[0]?.counts?.tampered > 0 
+                          ? 'var(--danger)' 
+                          : 'var(--success)'
+                      }} 
+                    />
+                    {auditRuns[0]?.status === 'SKIPPED'
+                      ? 'Node Unreachable (Skipped)'
+                      : auditRuns[0]?.counts?.tampered > 0 
+                      ? `${auditRuns[0].counts.tampered} Tampered Record(s) Detected`
+                      : 'All Records Verified'}
+                  </span>
+                ) : (
+                  <span 
+                    style={{ 
+                      fontSize: '0.7rem', 
+                      padding: '0.1rem 0.5rem', 
+                      borderRadius: '999px',
+                      background: '#f1f5f9',
+                      color: 'var(--text-muted)',
+                      fontWeight: 600
+                    }}
+                  >
+                    No audit run
+                  </span>
+                )}
+              </div>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '2px' }}>
+                {auditRuns[0]?.startedAt ? (
+                  <>Last run: {new Date(auditRuns[0].startedAt).toLocaleString()} ({auditRuns[0].trigger}) • Next scheduled: 02:00 daily</>
+                ) : (
+                  <>Scheduled daily at 02:00 • No audit has run yet</>
+                )}
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleRunIntegrityAudit}
+            disabled={auditRunning}
+            className="btn btn-primary"
+            style={{ fontSize: '0.8rem', padding: '0.35rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+          >
+            <RefreshCw size={14} className={auditRunning ? 'animate-spin' : ''} />
+            {auditRunning ? 'Running Audit...' : 'Run audit now'}
+          </button>
+        </div>
+
+        {/* Audit Content */}
+        {auditLoading && auditRuns.length === 0 ? (
+          <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+            <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 0.5rem' }} />
+            <div style={{ fontSize: '0.875rem' }}>Loading integrity audit history...</div>
+          </div>
+        ) : auditError ? (
+          <div style={{ padding: '1rem', background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--danger)', fontSize: '0.875rem' }}>
+              <AlertTriangle size={16} />
+              <span>{auditError}</span>
+            </div>
+            <button className="btn btn-outline" onClick={fetchAuditRuns} style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem' }}>
+              Retry
+            </button>
+          </div>
+        ) : auditRuns.length === 0 ? (
+          <div style={{ padding: '2rem', textAlign: 'center', background: 'var(--bg-main, #F8FAFC)', borderRadius: '8px', border: '1px dashed var(--border-light)' }}>
+            <ShieldCheck size={36} style={{ color: 'var(--text-muted)', margin: '0 auto 0.5rem' }} />
+            <h4 style={{ margin: '0 0 0.25rem', color: 'var(--text-main)', fontSize: '0.95rem' }}>No audit has run yet</h4>
+            <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+              Click "Run audit now" above to verify all anchored records against the blockchain, or wait for the automatic daily cron at 02:00.
+            </p>
+          </div>
+        ) : (
+          <div>
+            {/* Metric Pills */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+              <div style={{ padding: '0.75rem', background: 'var(--bg-main, #F8FAFC)', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Checked</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '0.2rem' }}>
+                  {auditRuns[0]?.counts?.checked ?? 0}
+                </div>
+              </div>
+
+              <div style={{ padding: '0.75rem', background: 'var(--bg-main, #F8FAFC)', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Verified</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--success)', marginTop: '0.2rem' }}>
+                  {auditRuns[0]?.counts?.verified ?? 0}
+                </div>
+              </div>
+
+              <div style={{ 
+                padding: '0.75rem', 
+                background: (auditRuns[0]?.counts?.tampered || 0) > 0 ? '#FEF2F2' : 'var(--bg-main, #F8FAFC)', 
+                borderRadius: '8px', 
+                border: `1px solid ${(auditRuns[0]?.counts?.tampered || 0) > 0 ? '#FCA5A5' : 'var(--border-light)'}` 
+              }}>
+                <div style={{ fontSize: '0.7rem', color: (auditRuns[0]?.counts?.tampered || 0) > 0 ? '#DC2626' : 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                  Tampered
+                </div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: (auditRuns[0]?.counts?.tampered || 0) > 0 ? 'var(--danger)' : 'var(--text-main)', marginTop: '0.2rem' }}>
+                  {auditRuns[0]?.counts?.tampered ?? 0}
+                </div>
+              </div>
+
+              <div style={{ padding: '0.75rem', background: 'var(--bg-main, #F8FAFC)', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Pending</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#2563EB', marginTop: '0.2rem' }}>
+                  {auditRuns[0]?.counts?.pending ?? 0}
+                </div>
+              </div>
+
+              <div style={{ padding: '0.75rem', background: 'var(--bg-main, #F8FAFC)', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Not Anchored</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--warning)', marginTop: '0.2rem' }}>
+                  {auditRuns[0]?.counts?.notAnchored ?? 0}
+                </div>
+              </div>
+
+              <div style={{ padding: '0.75rem', background: 'var(--bg-main, #F8FAFC)', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Unverifiable</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                  {auditRuns[0]?.counts?.unverifiable ?? 0}
+                </div>
+              </div>
+            </div>
+
+            {/* Tampered Records Alert & Table */}
+            {auditRuns[0]?.counts?.tampered > 0 && auditRuns[0]?.tamperedRecords?.length > 0 && (
+              <div style={{ padding: '1rem', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', marginBottom: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#B91C1C', fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.75rem' }}>
+                  <ShieldAlert size={18} />
+                  <span>Tampering Detected: The following record versions differ from the blockchain anchor:</span>
+                </div>
+                <div className="table-responsive">
+                  <table className="table" style={{ background: '#FFFFFF', borderRadius: '6px', margin: 0 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ fontSize: '0.75rem' }}>Record ID</th>
+                        <th style={{ fontSize: '0.75rem' }}>Version</th>
+                        <th style={{ fontSize: '0.75rem' }}>Detected At</th>
+                        <th style={{ fontSize: '0.75rem' }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {auditRuns[0].tamperedRecords.map((tRec, idx) => (
+                        <tr key={tRec.recordId || idx}>
+                          <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                            {tRec.recordId}
+                          </td>
+                          <td>
+                            <span className="badge badge-primary">v{tRec.version || 1}</span>
+                          </td>
+                          <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                            {tRec.detectedAt ? new Date(tRec.detectedAt).toLocaleString() : 'Just now'}
+                          </td>
+                          <td>
+                            <Link 
+                              to={`/record/${tRec.recordId}`}
+                              className="btn btn-outline btn-sm"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', padding: '0.2rem 0.5rem', color: 'var(--danger)', borderColor: 'var(--danger)' }}
+                            >
+                              View Record <ExternalLink size={12} />
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
 

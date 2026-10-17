@@ -101,6 +101,42 @@ node scripts/reanchorRecords.js
 
 ---
 
+---
+
+## Blockchain Anchor Retry Queue
+
+When a doctor creates or edits a medical record while the blockchain node is offline or restarting:
+1. **Never blocked**: The medical record is saved to the database immediately without failing or losing clinical data.
+2. **`PENDING_ANCHOR` status**: The record's SHA-256 fingerprint is calculated and stored with status `PENDING_ANCHOR`.
+3. **Queue Worker (`server/jobs/anchorQueue.js`)**: Runs automatically every 60 seconds.
+   - Checks if the blockchain node is reachable before attempting runs.
+   - Processes pending records oldest-first in batches of 20 sequentially (preventing nonce collisions).
+   - Anchors the stored fingerprint to the smart contract, updates transaction receipt, and logs `RECORD_ANCHORED` in the audit log.
+   - Tracks failed attempts; after 5 failed tries, transitions record to `ANCHOR_FAILED` and dispatches `notifyAdmins`.
+4. **Admin System Health**: Displays waiting records count and provides a manual "Retry now" button (restricted to `ADMIN`, audited as `ADMIN_RETRY_ANCHOR_QUEUE`).
+
+---
+
+## Scheduled Cryptographic Integrity Audit
+
+The system features an automated, background verification engine that regularly audits all anchored records to detect tampering:
+- **Scheduler (`server/jobs/integrityAudit.js`)**: Runs on a cron schedule using `node-cron` (default: `0 2 * * *` / 02:00 AM daily, configurable via `AUDIT_CRON` in `.env`).
+- **Connection Safety**: Verifies blockchain node connectivity first. If unreachable, logs `"Audit skipped: node unreachable"` and creates a `SKIPPED` audit record. **Never reports records as TAMPERED due to network downtime.**
+- **Batch Processing**: Scans all anchored record versions in memory-safe batches of 50 using `computeIntegrityStatus`. Versions with `PENDING_ANCHOR`, `NOT_ANCHORED`, or `ANCHOR_FAILED` are counted without invoking the on-chain comparison loop.
+- **In-process Concurrency Lock**: Prevents multiple audit runs from executing concurrently and pauses while the anchor queue is mid-batch.
+- **Tampering Detection & Non-invasive Safety**: Never modifies or deletes clinical data. If a record is newly detected as `TAMPERED`:
+  - Flags `verificationStatus = 'TAMPERED'` on the record version.
+  - Dispatches an audit entry: `RECORD_TAMPERING_DETECTED`.
+  - Dispatches `notifyAdmins` alert once per record (does not repeat on subsequent nightly runs for already-flagged records).
+- **Audit Run History (`IntegrityAuditRun` model)**: Persists audit timestamps, trigger type (`SCHEDULED` vs `MANUAL`), triggered by actor, counts (`checked`, `verified`, `tampered`, `pending`, `notAnchored`, `unverifiable`), and tampered record IDs.
+- **Admin Dashboard UI**: A dedicated **"Integrity Audit"** card in the Admin Dashboard displays:
+  - Last run timestamp, trigger type, and operational status badge (Green for clean, Red for tampering detected).
+  - Metrics grid with live counts.
+  - "Run audit now" button with spinner feedback and toast alerts (`POST /api/admin/integrity-audit/run`).
+  - Interactive table of detected tampered records with direct links to each record inspection page.
+
+---
+
 ## Unified Integrity Status Guarantees
 
 The unified record status verification engine (`server/services/verificationService.js`) enforces strict rules:
@@ -108,6 +144,8 @@ The unified record status verification engine (`server/services/verificationServ
 | Status | Meaning | When Triggered |
 | :--- | :--- | :--- |
 | `VERIFIED` | Integrity intact | On-chain hash matches recalculated data hash exactly. |
+| `PENDING_ANCHOR` | In retry queue | Record saved while blockchain was offline; awaiting queue worker. |
+| `ANCHOR_FAILED` | Max retries exceeded | Record failed 5 automatic anchoring attempts. Admin alert dispatched. |
 | `NOT_ANCHORED` | Never anchored / missing receipt | Record lacks a transaction receipt or has no entry on current chain. **Never marked TAMPERED.** |
 | `CHAIN_MISMATCH` | Chain was restarted | Record was anchored to an older contract before a chain reset. |
 | `UNVERIFIABLE` | Node unreachable / contract missing | Hardhat node is down (`ECONNREFUSED`, timeout) or contract bytecode is missing (`0x`). **Never marked TAMPERED.** |
@@ -127,24 +165,29 @@ The unified record status verification engine (`server/services/verificationServ
 │   └── hardhat.config.js
 ├── server/
 │   ├── models/
-│   │   ├── MedicalRecord.js          # Record schema (contractAddress, anchoredAt, verificationStatus)
+│   │   ├── MedicalRecord.js          # Record schema (contractAddress, anchoredAt, verificationStatus, anchorAttempts)
+│   │   ├── IntegrityAuditRun.js      # Audit history model (counts, trigger, tamperedRecords)
 │   │   └── SystemConfig.js           # Persists active contract address
 │   ├── routes/
-│   │   └── adminRoutes.js            # Admin endpoints including POST /api/admin/reanchor
+│   │   └── adminRoutes.js            # Admin endpoints including POST /api/admin/reanchor & integrity-audit routes
 │   ├── controllers/
-│   │   ├── adminController.js        # Health status check & re-anchor controller
+│   │   ├── adminController.js        # Health status check, re-anchor & integrity audit controllers
 │   │   └── recordController.js       # Unified verification status integration
+│   ├── jobs/
+│   │   ├── anchorQueue.js            # Background worker retrying pending anchors
+│   │   └── integrityAudit.js         # Scheduled (02:00 daily) and manual integrity audit job
 │   ├── services/
 │   │   ├── blockchainService.js      # ethers.js interface with dynamic contract reload
 │   │   ├── chainResetService.js      # Detects contract address shifts on startup
-│   │   └── verificationService.js    # Unified verification status function
+│   │   └── verificationService.js    # Unified verification status function (computeIntegrityStatus)
 │   └── scripts/
 │       └── reanchorRecords.js        # Batch re-anchor routine with tampering check
 └── client/
     └── src/
         ├── pages/
-        │   ├── AdminDashboard.jsx    # System Health panel with "Re-anchor records" button
+        │   ├── AdminDashboard.jsx    # System Health panel & Cryptographic Integrity Audit card
         │   ├── RecordDetails.jsx     # Detailed cryptographic inspection panel
         │   ├── PatientDashboard.jsx  # Patient records with verification status
         │   └── PatientRecords.jsx    # Doctor-facing patient records view
 ```
+

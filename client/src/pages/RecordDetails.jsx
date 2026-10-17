@@ -73,8 +73,9 @@ const RecordDetails = () => {
   }
 
   const isVerified = recordInfo?.status === 'VERIFIED';
+  const isPending = recordInfo?.status === 'PENDING_ANCHOR';
   const isTampered = recordInfo?.status === 'TAMPERED' || recordInfo?.status === 'INTEGRITY_CHECK_FAILED';
-  const isWarning = !isVerified && !isTampered;
+  const isWarning = !isVerified && !isTampered && !isPending;
   // Backend returns: status, calculatedHash, blockchainHash, transactionHash, timestamp, recordData (if populated), createdAt
   const data = recordInfo?.recordData || {};
 
@@ -104,8 +105,19 @@ const RecordDetails = () => {
           <div className="card">
             <div className={`card-header`}>
               <h3 className="card-title"><Activity size={18} className="text-muted"/> Clinical Information</h3>
-              <div className={`badge badge-${isVerified ? 'success' : isTampered ? 'danger' : 'warning'}`}>
-                {isVerified ? 'Integrity Verified' : isTampered ? 'Integrity Warning' : 'Not Verified'}
+              <div 
+                className="badge" 
+                style={
+                  isVerified 
+                    ? { background: 'var(--success-light)', color: 'var(--success)' }
+                    : isPending
+                    ? { background: '#dbeafe', color: '#1d4ed8' }
+                    : isTampered
+                    ? { background: 'var(--danger-light)', color: 'var(--danger)' }
+                    : { background: 'var(--warning-light)', color: 'var(--warning)' }
+                }
+              >
+                {isVerified ? 'Integrity Verified' : isPending ? 'Pending Anchoring' : isTampered ? 'Integrity Warning' : 'Not Verified'}
               </div>
             </div>
             <div className="card-body">
@@ -215,6 +227,10 @@ const RecordDetails = () => {
                         <td>
                           {item.verificationStatus === 'VERIFIED' ? (
                             <span className="badge badge-success">Verified</span>
+                          ) : item.verificationStatus === 'PENDING_ANCHOR' ? (
+                            <span className="badge" style={{ background: '#dbeafe', color: '#1d4ed8' }}>Pending anchoring</span>
+                          ) : item.verificationStatus === 'ANCHOR_FAILED' ? (
+                            <span className="badge" style={{ background: '#fee2e2', color: '#b91c1c' }}>Anchor Failed</span>
                           ) : item.verificationStatus === 'TAMPERED' ? (
                             <span className="badge badge-danger">Tampered</span>
                           ) : item.verificationStatus === 'NOT_ANCHORED' ? (
@@ -254,10 +270,13 @@ const RecordDetails = () => {
         {/* Right Column: Cryptographic Security Panel */}
         <div style={{ position: 'sticky', top: '1rem' }}>
           
-          <div className={`security-panel ${isTampered ? 'failed' : isWarning ? 'warning' : ''}`}>
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', fontSize: '1.1rem', color: isVerified ? 'var(--success)' : isTampered ? 'var(--danger)' : 'var(--warning)' }}>
-              {isVerified ? <ShieldCheck size={24} /> : <ShieldAlert size={24} />}
-              {recordInfo?.status === 'BLOCKCHAIN_UNREACHABLE' || recordInfo?.status === 'UNVERIFIABLE' ? 'BLOCKCHAIN OFFLINE' : 
+          <div className={`security-panel ${isTampered ? 'failed' : isPending ? 'pending' : isWarning ? 'warning' : ''}`}
+               style={isPending ? { borderColor: '#93c5fd', background: 'rgba(219, 234, 254, 0.15)' } : {}}>
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', fontSize: '1.1rem', color: isVerified ? 'var(--success)' : isPending ? '#2563eb' : isTampered ? 'var(--danger)' : 'var(--warning)' }}>
+              {isVerified ? <ShieldCheck size={24} /> : isPending ? <ShieldAlert size={24} style={{ color: '#2563eb' }} /> : <ShieldAlert size={24} />}
+              {recordInfo?.status === 'PENDING_ANCHOR' ? 'PENDING ANCHORING' :
+               recordInfo?.status === 'ANCHOR_FAILED' ? 'ANCHORING FAILED' :
+               recordInfo?.status === 'BLOCKCHAIN_UNREACHABLE' || recordInfo?.status === 'UNVERIFIABLE' ? 'BLOCKCHAIN OFFLINE' : 
                recordInfo?.status === 'CONTRACT_NOT_DEPLOYED' ? 'CONTRACT NOT DEPLOYED' :
                recordInfo?.status === 'CHAIN_MISMATCH' ? 'CHAIN MISMATCH' :
                recordInfo?.status === 'NOT_ANCHORED' ? 'RECORD NOT ANCHORED' :
@@ -265,7 +284,11 @@ const RecordDetails = () => {
             </h3>
             
             <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-              {recordInfo?.status === 'BLOCKCHAIN_UNREACHABLE' || recordInfo?.status === 'UNVERIFIABLE'
+              {recordInfo?.status === 'PENDING_ANCHOR'
+                ? (recordInfo?.anchorAttempts ? `Queued for blockchain anchoring (Attempt ${recordInfo.anchorAttempts}/5). Worker will retry automatically every 60 seconds.` : "Queued for blockchain anchoring. Worker will retry automatically when node is reachable.")
+                : recordInfo?.status === 'ANCHOR_FAILED'
+                ? "Automatic anchoring failed after multiple attempts. Admin intervention required."
+                : recordInfo?.status === 'BLOCKCHAIN_UNREACHABLE' || recordInfo?.status === 'UNVERIFIABLE'
                 ? "Blockchain node offline or unreachable."
                 : recordInfo?.status === 'CONTRACT_NOT_DEPLOYED'
                 ? "Contract not deployed at this address: redeploy and update .env.blockchain"
@@ -280,7 +303,7 @@ const RecordDetails = () => {
 
             <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', margin: 0 }}>
-                {!isVerified && !['BLOCKCHAIN_UNREACHABLE', 'CONTRACT_NOT_DEPLOYED', 'NOT_ANCHORED', 'UNVERIFIABLE', 'CHAIN_MISMATCH'].includes(recordInfo?.status) ? 'Recalculated from current data' : 'Record Fingerprint'}
+                {!isVerified && !['PENDING_ANCHOR', 'ANCHOR_FAILED', 'BLOCKCHAIN_UNREACHABLE', 'CONTRACT_NOT_DEPLOYED', 'NOT_ANCHORED', 'UNVERIFIABLE', 'CHAIN_MISMATCH'].includes(recordInfo?.status) ? 'Recalculated from current data' : 'Record Fingerprint'}
               </p>
               <button 
                 className="btn btn-outline btn-sm" 
@@ -296,10 +319,12 @@ const RecordDetails = () => {
 
             <div style={{ marginBottom: '1rem' }}>
               <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
-                {!isVerified && !['BLOCKCHAIN_UNREACHABLE', 'CONTRACT_NOT_DEPLOYED', 'NOT_ANCHORED', 'UNVERIFIABLE', 'CHAIN_MISMATCH'].includes(recordInfo?.status) ? 'Stored on blockchain (original)' : 'Verification Reference'}
+                {!isVerified && !['PENDING_ANCHOR', 'ANCHOR_FAILED', 'BLOCKCHAIN_UNREACHABLE', 'CONTRACT_NOT_DEPLOYED', 'NOT_ANCHORED', 'UNVERIFIABLE', 'CHAIN_MISMATCH'].includes(recordInfo?.status) ? 'Stored on blockchain (original)' : 'Verification Reference'}
               </p>
               <div className="crypto-data">
-                {recordInfo?.status === 'BLOCKCHAIN_UNREACHABLE' || recordInfo?.status === 'UNVERIFIABLE' ? 'Blockchain unreachable' : 
+                {recordInfo?.status === 'PENDING_ANCHOR' ? 'Pending anchoring (in retry queue)' :
+                 recordInfo?.status === 'ANCHOR_FAILED' ? 'Anchoring failed (exceeded retries)' :
+                 recordInfo?.status === 'BLOCKCHAIN_UNREACHABLE' || recordInfo?.status === 'UNVERIFIABLE' ? 'Blockchain unreachable' : 
                  recordInfo?.status === 'CONTRACT_NOT_DEPLOYED' ? 'Contract not deployed' :
                  recordInfo?.status === 'CHAIN_MISMATCH' ? 'Chain mismatch (re-anchoring required)' :
                  recordInfo?.status === 'NOT_ANCHORED' ? 'Not anchored' :
@@ -310,7 +335,9 @@ const RecordDetails = () => {
             <div style={{ marginBottom: '1rem' }}>
               <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>System Receipt</p>
               <div className="crypto-data">
-                {recordInfo?.status === 'NOT_ANCHORED' && recordInfo?.blockchainTxHash 
+                {recordInfo?.status === 'PENDING_ANCHOR'
+                  ? 'Pending confirmation (awaiting block generation)'
+                  : recordInfo?.status === 'NOT_ANCHORED' && recordInfo?.blockchainTxHash 
                   ? 'Transaction not found on current chain' 
                   : (recordInfo?.blockchainTxHash || 'Not anchored')}
               </div>

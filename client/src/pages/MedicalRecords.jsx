@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getPatientRecords } from '../api/records';
-import { FileText, ShieldAlert, CheckCircle2, ChevronLeft, Inbox } from 'lucide-react';
+import { FileText, ShieldAlert, CheckCircle2, ChevronLeft, Inbox, Clock } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
 const MedicalRecords = () => {

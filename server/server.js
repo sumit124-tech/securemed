@@ -91,6 +91,20 @@ connectDB().then(() => {
       });
     });
 
+    // Start background anchor retry queue worker (runs every 60s)
+    import('./jobs/anchorQueue.js').then(({ startAnchorQueueWorker }) => {
+      startAnchorQueueWorker(60000);
+    }).catch(err => {
+      console.warn('Failed to start anchor queue worker:', err.message);
+    });
+
+    // Start scheduled cryptographic integrity audit cron (runs 02:00 daily or AUDIT_CRON)
+    import('./jobs/integrityAudit.js').then(({ startIntegrityAuditCron }) => {
+      startIntegrityAuditCron();
+    }).catch(err => {
+      console.warn('Failed to initialize integrity audit cron scheduler:', err.message);
+    });
+
     // Check blockchain asynchronously without blocking
     import('./services/blockchainService.js').then((module) => {
       const blockchainService = module.default;
