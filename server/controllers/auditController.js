@@ -25,7 +25,8 @@ export const ACTION_LABELS = {
   ACCESS_REJECTED: 'Access rejected',
   ACCESS_REVOKED: 'Access revoked',
   ACTIVATE_USER: 'User activated',
-  DEACTIVATE_USER: 'User deactivated'
+  DEACTIVATE_USER: 'User deactivated',
+  RATE_LIMIT_EXCEEDED: 'Rate limit exceeded'
 };
 
 // Helper: build filter based on user role and query parameters

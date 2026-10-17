@@ -12,7 +12,8 @@ import doctorRoutes from './routes/doctorRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+import mongoSanitize from 'express-mongo-sanitize';
+import { generalLimiter, authLimiter } from './middleware/rateLimitMiddleware.js';
 
 import fs from 'fs';
 import path from 'path';
@@ -31,39 +32,52 @@ if (fs.existsSync(blockchainEnvPath)) {
 const app = express();
 app.set('trust proxy', true);
 
-// Security Headers
-app.use(helmet());
+// 1. Hide X-Powered-By header
+app.disable('x-powered-by');
 
-// CORS Configuration
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || 
-        origin.includes('localhost') || 
-        origin.includes('127.0.0.1') || 
-        origin.endsWith('.trycloudflare.com')) {
-      callback(null, true);
-    } else {
-      callback(null, true);
-    }
-  },
-  credentials: true
+// 2. Helmet with sensible defaults for cross-origin assets, popups, and API protection
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+  contentSecurityPolicy: false // Pure REST API backend: avoids breaking client assets, Vite HMR, and external links
 }));
 
-// Rate Limiting (Basic brute-force protection)
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per `window`
-  message: { message: "Too many requests from this IP, please try again after 15 minutes" },
-  validate: { trustProxy: false }
-});
-app.use('/api/auth', apiLimiter); // Apply only to auth routes as requested
-app.use('/api/records/verify', apiLimiter);
+// 3. CORS Configuration: allow only CLIENT_URL from env (default http://localhost:5173), no wildcard
+const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    const cleanOrigin = origin.replace(/\/$/, '');
+    const cleanClientUrl = clientUrl.replace(/\/$/, '');
+    if (cleanOrigin === cleanClientUrl) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS blocked: Origin ${origin} not allowed`));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
 
-// Middleware
-app.use(express.json({ limit: '1mb' })); // Limit body size to prevent payload starvation attacks
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+// 4. Body parsing: limit JSON and URL-encoded body size to 100kb
+app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 
-// Routes
+// 5. NoSQL operator sanitization (strips $ and . keys from body, query, and params)
+app.use(mongoSanitize({ allowDots: false }));
+
+// 6. Rate Limiting
+// General limiter on /api: 300 requests per 15 minutes per IP (skips health, notifications, and integrity-audit polling)
+app.use('/api', generalLimiter);
+
+// Strict limiter on login, register, and admin login: 10 requests per 15 minutes per IP (writes audit entry on 429)
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/admin/login', authLimiter);
+
+// 7. Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/access', accessRoutes);
 app.use('/api/records', recordRoutes);
@@ -75,6 +89,54 @@ app.use('/api/admin', adminRoutes);
 // Basic Health Check Route
 app.get('/', (req, res) => {
   res.send('Secure Medical Record System API is running...');
+});
+
+// 8. 404 Handler for undefined routes
+app.use((req, res, next) => {
+  res.status(404).json({
+    success: false,
+    message: `Not Found - ${req.originalUrl}`
+  });
+});
+
+// 9. Final Error Handler: clean JSON with correct status, no stack traces in production, clear 400 for malformed JSON
+app.use((err, req, res, next) => {
+  // Malformed JSON payload syntax error
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid JSON payload provided'
+    });
+  }
+
+  // Request body too large
+  if (err.type === 'entity.too.large' || err.status === 413) {
+    return res.status(413).json({
+      success: false,
+      message: 'Payload too large. Maximum allowed size is 100kb.'
+    });
+  }
+
+  // CORS blocked error
+  if (err.message && err.message.startsWith('CORS blocked')) {
+    return res.status(403).json({
+      success: false,
+      message: err.message
+    });
+  }
+
+  const statusCode = err.status || (res.statusCode >= 400 ? res.statusCode : 500);
+  const isProduction = process.env.NODE_ENV === 'production';
+  const response = {
+    success: false,
+    message: err.message || 'Internal Server Error'
+  };
+
+  if (!isProduction && err.stack) {
+    response.stack = err.stack;
+  }
+
+  res.status(statusCode).json(response);
 });
 
 const PORT = process.env.PORT || 5000;
