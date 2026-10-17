@@ -6,19 +6,24 @@ import { fileURLToPath } from 'url';
 
 import MedicalRecord from '../models/MedicalRecord.js';
 import blockchainService from '../services/blockchainService.js';
-import { generateRecordHash } from '../utils/hashHelper.js';
+import { generateRecordHash, isLegacyEmptyRecord } from '../utils/hashHelper.js';
 import { logAudit } from '../utils/auditHelper.js';
 import { notifyAdmins } from '../utils/notifyHelper.js';
 import { clearChainReset } from '../services/chainResetService.js';
 
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const serverDir = path.resolve(scriptDir, '..');
+
 // Load base environment
 const baseEnvCandidates = [
+  path.resolve(serverDir, '.env'),
   path.resolve(process.cwd(), '.env'),
   path.resolve(process.cwd(), 'server/.env'),
   path.resolve(process.cwd(), '../server/.env')
 ];
 for (const p of baseEnvCandidates) {
   if (fs.existsSync(p)) {
+    dotenv.config({ path: p });
     const envConfig = dotenv.parse(fs.readFileSync(p));
     for (const k in envConfig) {
       if (!process.env[k]) {
@@ -30,12 +35,14 @@ for (const p of baseEnvCandidates) {
 
 // Load blockchain env if available
 const candidates = [
+  path.resolve(serverDir, '.env.blockchain'),
   path.resolve(process.cwd(), '.env.blockchain'),
   path.resolve(process.cwd(), 'server/.env.blockchain'),
   path.resolve(process.cwd(), '../server/.env.blockchain')
 ];
 for (const p of candidates) {
   if (fs.existsSync(p)) {
+    dotenv.config({ path: p, override: true });
     const envConfig = dotenv.parse(fs.readFileSync(p));
     for (const k in envConfig) {
       process.env[k] = envConfig[k];
@@ -59,9 +66,12 @@ for (const p of candidates) {
  * @param {Object} [options]
  * @param {string} [options.calledBy] - 'CLI' or 'ADMIN'
  * @param {number} [options.batchSize=10]
+ * @param {boolean} [options.dryRun=false]
  * @returns {Promise<Object>} Summary stats
  */
-export const reanchorRecords = async ({ calledBy = 'CLI', batchSize = 10 } = {}) => {
+export const reanchorRecords = async ({ calledBy = 'CLI', batchSize = 10, dryRun = false } = {}) => {
+  const isDryRun = dryRun || process.argv.includes('--dry-run');
+
   // 1. Refuse to run in production
   if (process.env.NODE_ENV === 'production') {
     const errorMsg = 'CRITICAL: Refusing to run reanchorRecords in production environment.';
@@ -77,7 +87,10 @@ export const reanchorRecords = async ({ calledBy = 'CLI', batchSize = 10 } = {})
   }
 
   // 3. Ensure contract address is refreshed
-  const currentContract = blockchainService.reloadContract();
+  const contract = blockchainService.reloadContract();
+  const currentContract = blockchainService.getContractAddress() || (contract?.target || (typeof contract === 'string' ? contract : null));
+  const currentNetwork = blockchainService.getNetworkName();
+
   if (!currentContract || currentContract === 'your_deployed_contract_address_here') {
     throw new Error('No valid contract address found in .env.blockchain. Deploy contract first.');
   }
@@ -92,7 +105,7 @@ export const reanchorRecords = async ({ calledBy = 'CLI', batchSize = 10 } = {})
     throw new Error(`Failed to verify contract code at ${currentContract}: ${err.message}`);
   }
 
-  console.log(`[Re-anchor] Starting re-anchoring process. Active contract: ${currentContract}`);
+  console.log(`[Re-anchor] Starting re-anchoring process. Active contract: ${currentContract} on network: ${currentNetwork} ${isDryRun ? '(DRY RUN)' : ''}`);
 
   // 4. Fetch all records to inspect
   const records = await MedicalRecord.find({}).sort({ createdAt: 1 });
@@ -102,10 +115,13 @@ export const reanchorRecords = async ({ calledBy = 'CLI', batchSize = 10 } = {})
 
   let reanchoredCount = 0;
   let skippedCount = 0;
+  let legacyEmptyCount = 0;
+  let noFingerprintCount = 0;
+  let notAnchoredCount = 0;
   let tamperedCount = 0;
   let errorCount = 0;
 
-  // 5. Process in batches
+  // 5. Process in batches with inter-batch delay for RPC limits
   for (let i = 0; i < totalRecords; i += batchSize) {
     const batch = records.slice(i, i + batchSize);
     const batchNum = Math.floor(i / batchSize) + 1;
@@ -115,21 +131,34 @@ export const reanchorRecords = async ({ calledBy = 'CLI', batchSize = 10 } = {})
 
     for (const rec of batch) {
       try {
-        // Recompute hash from the stored DB data fields
-        const currentData = {
-          patient: rec.patient?._id ? rec.patient._id.toString() : (rec.patient?.toString() || ''),
-          doctor: rec.doctor?._id ? rec.doctor._id.toString() : (rec.doctor?.toString() || ''),
-          visitDate: rec.visitDate,
-          symptoms: rec.symptoms || '',
-          diagnosis: rec.diagnosis || '',
-          treatment: rec.treatment || '',
-          prescription: rec.prescription || ''
-        };
+        // 1. Check if all clinical fields are empty: mark LEGACY_EMPTY and print reason per record
+        if (isLegacyEmptyRecord(rec)) {
+          legacyEmptyCount++;
+          console.log(`  [LEGACY_EMPTY] Record #${rec._id.toString().slice(-6)}: All clinical fields empty or 'Not provided'. Skipped anchoring.`);
+          if (!isDryRun) {
+            rec.verificationStatus = 'LEGACY_EMPTY';
+            await rec.save();
+          }
+          continue;
+        }
 
-        const calculatedHash = generateRecordHash(currentData);
         const storedFingerprint = rec.currentHash;
 
-        // Check if already anchored and verified on current contract
+        // 2. Check if stored fingerprint is missing: mark NO_FINGERPRINT (legacy)
+        if (!storedFingerprint) {
+          noFingerprintCount++;
+          console.log(`  [NO_FINGERPRINT] Record #${rec._id.toString().slice(-6)}: No stored cryptographic fingerprint. Skipped anchoring.`);
+          if (!isDryRun) {
+            rec.verificationStatus = 'NO_FINGERPRINT';
+            await rec.save();
+          }
+          continue;
+        }
+
+        // 3. Recompute canonical hash from DB data
+        const calculatedHash = generateRecordHash(rec);
+
+        // 4. Check if already anchored and verified on active contract
         let isAlreadyVerified = false;
         try {
           isAlreadyVerified = await blockchainService.verifyHash(rec._id, calculatedHash);
@@ -138,91 +167,110 @@ export const reanchorRecords = async ({ calledBy = 'CLI', batchSize = 10 } = {})
         }
 
         const isSameContract = rec.contractAddress && rec.contractAddress.toLowerCase() === currentContract.toLowerCase();
+        const isSameNetwork = rec.network && rec.network.toLowerCase() === currentNetwork.toLowerCase();
 
-        // Skip anything already VERIFIED on the active contract
-        if (isAlreadyVerified && isSameContract) {
-          rec.verificationStatus = 'VERIFIED';
-          await rec.save();
+        // Skip anything already VERIFIED on the active contract and network
+        if (isAlreadyVerified && isSameContract && isSameNetwork) {
+          if (!isDryRun) {
+            rec.verificationStatus = 'VERIFIED';
+            await rec.save();
+          }
           skippedCount++;
-          console.log(`  [SKIP] Record #${rec._id.toString().slice(-6)} already verified on active contract.`);
+          console.log(`  [SKIP] Record #${rec._id.toString().slice(-6)} already verified on active contract & network.`);
           continue;
         }
 
-        // Compare recomputed hash with stored fingerprint
+        // 5. Compare recomputed hash with stored fingerprint
         if (calculatedHash === storedFingerprint) {
-          // Data is intact: anchor stored fingerprint to current contract
-          const receipt = await blockchainService.storeHash(rec._id, storedFingerprint);
+          // Data is intact -> anchor to blockchain
+          if (isDryRun) {
+            reanchoredCount++;
+            console.log(`  [DRY RUN - WOULD ANCHOR] Record #${rec._id.toString().slice(-6)} (fingerprint ${storedFingerprint.slice(0, 10)}...) to ${currentNetwork}`);
+          } else {
+            const receipt = await blockchainService.storeHash(rec._id, storedFingerprint);
 
-          rec.blockchainTxHash = receipt.txHash;
-          rec.contractAddress = currentContract;
-          rec.anchoredAt = new Date();
-          rec.verificationStatus = 'VERIFIED';
-          await rec.save();
+            rec.blockchainTxHash = receipt.txHash;
+            rec.contractAddress = currentContract;
+            rec.network = currentNetwork;
+            rec.anchoredAt = new Date();
+            rec.verificationStatus = 'VERIFIED';
+            await rec.save();
 
-          // Write RECORD_ANCHORED audit log entry
-          await logAudit(null, {
-            actor: null,
-            role: 'SYSTEM',
-            action: 'RECORD_ANCHORED',
-            resourceType: 'MedicalRecord',
-            resourceId: rec._id,
-            resourceLabel: `Medical record #${rec._id.toString().slice(-6)}`,
-            relatedPatient: rec.patient,
-            details: `Re-anchored to active contract ${currentContract} (tx: ${receipt.txHash}) by ${calledBy}`
-          });
+            // Write RECORD_ANCHORED audit log entry
+            await logAudit(null, {
+              actor: null,
+              role: 'SYSTEM',
+              action: 'RECORD_ANCHORED',
+              resourceType: 'MedicalRecord',
+              resourceId: rec._id,
+              resourceLabel: `Medical record #${rec._id.toString().slice(-6)}`,
+              relatedPatient: rec.patient,
+              details: `Re-anchored to active contract ${currentContract} on ${currentNetwork} (tx: ${receipt.txHash}) by ${calledBy}`
+            });
 
-          reanchoredCount++;
-          console.log(`  [ANCHORED] Record #${rec._id.toString().slice(-6)} -> tx: ${receipt.txHash.slice(0, 14)}...`);
-          await new Promise(r => setTimeout(r, 100));
+            reanchoredCount++;
+            console.log(`  [ANCHORED] Record #${rec._id.toString().slice(-6)} on ${currentNetwork} -> tx: ${receipt.txHash.slice(0, 14)}...`);
+            await new Promise(r => setTimeout(r, 200));
+          }
         } else {
-          // Hashes do NOT match: data tampering detected! Do NOT anchor.
-          rec.verificationStatus = 'TAMPERED';
-          await rec.save();
+          // Hashes do NOT match. Rule 2: No hash on chain -> NOT_ANCHORED, never TAMPERED.
+          notAnchoredCount++;
 
-          // Write RECORD_TAMPERING_DETECTED audit log entry
-          await logAudit(null, {
-            actor: null,
-            role: 'SYSTEM',
-            action: 'RECORD_TAMPERING_DETECTED',
-            resourceType: 'MedicalRecord',
-            resourceId: rec._id,
-            resourceLabel: `Medical record #${rec._id.toString().slice(-6)}`,
-            relatedPatient: rec.patient,
-            details: `Tampering detected during re-anchor: stored fingerprint ${storedFingerprint} differs from calculated data hash ${calculatedHash}`
-          });
-
-          // Dispatch notification to admins once per tampered record
-          await notifyAdmins({
-            type: 'SECURITY_ALERT',
-            title: 'Record Tampering Detected',
-            message: `Integrity check failed during re-anchor for record #${rec._id.toString().slice(-6)}. Database content differs from cryptographic fingerprint.`,
-            link: `/record/${rec._id}`,
-            relatedId: rec._id
-          });
-
-          tamperedCount++;
-          console.warn(`  [TAMPERED] Record #${rec._id.toString().slice(-6)} data mismatch! Skipped anchoring and notified admins.`);
+          if (isDryRun) {
+            console.warn(`  [DRY RUN - UNANCHORED DATA MISMATCH] Record #${rec._id.toString().slice(-6)} data mismatch, would set NOT_ANCHORED.`);
+          } else {
+            rec.verificationStatus = 'NOT_ANCHORED';
+            await rec.save();
+            console.warn(`  [NOT_ANCHORED] Record #${rec._id.toString().slice(-6)} stored fingerprint differs from database data. Skipped anchoring (marked NOT_ANCHORED).`);
+          }
         }
       } catch (recErr) {
         errorCount++;
         console.error(`  [ERROR] Failed to process record #${rec._id}:`, recErr.message);
       }
     }
+
+    // Delay between batches to respect RPC limits (especially on Sepolia)
+    if (i + batchSize < totalRecords) {
+      const delayMs = blockchainService.isSepolia() ? 2000 : 250;
+      await new Promise(r => setTimeout(r, delayMs));
+    }
   }
 
-  // 6. Clear chain reset state and update SystemConfig
-  await clearChainReset(currentContract);
+  // 6. Clear chain reset state and update SystemConfig (if not dry run)
+  if (!isDryRun) {
+    await clearChainReset(currentContract);
+  }
 
   const summary = {
     totalRecords,
     reanchored: reanchoredCount,
+    legacyEmpty: legacyEmptyCount,
+    noFingerprint: noFingerprintCount,
+    notAnchored: notAnchoredCount,
     tampered: tamperedCount,
     skipped: skippedCount,
     errors: errorCount,
-    contractAddress: currentContract
+    contractAddress: currentContract,
+    network: currentNetwork,
+    dryRun: isDryRun
   };
 
-  console.log(`[Re-anchor] Finished: ${reanchoredCount} re-anchored, ${tamperedCount} tampered, ${skippedCount} skipped, ${errorCount} errors.`);
+  if (isDryRun) {
+    console.log(`\n========================================================`);
+    console.log(`  RE-ANCHOR DRY RUN COMPLETE (NO WRITES PERFORMED)       `);
+    console.log(`========================================================`);
+    console.log(`Checked: ${totalRecords}`);
+    console.log(`Would anchor: ${reanchoredCount}`);
+    console.log(`Legacy empty: ${legacyEmptyCount}`);
+    console.log(`No fingerprint: ${noFingerprintCount}`);
+    console.log(`Not anchored / mismatch: ${notAnchoredCount}`);
+    console.log(`Skipped (already verified): ${skippedCount}`);
+    console.log(`Errors: ${errorCount}`);
+    console.log(`========================================================\n`);
+  } else {
+    console.log(`[Re-anchor] Finished: ${reanchoredCount} re-anchored, ${legacyEmptyCount} legacy empty, ${notAnchoredCount} unanchored, ${skippedCount} skipped, ${errorCount} errors.`);
+  }
   return summary;
 };
 

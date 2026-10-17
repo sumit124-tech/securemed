@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getPatientRecords } from '../api/records';
-import { FileText, ShieldAlert, CheckCircle2, ChevronLeft, Inbox, Clock } from 'lucide-react';
+import { FileText, ShieldAlert, CheckCircle2, ChevronLeft, Inbox, Clock, ExternalLink } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
 const MedicalRecords = () => {
@@ -96,6 +96,10 @@ const MedicalRecords = () => {
                       <td>
                         {record?.verificationStatus === 'VERIFIED' ? (
                           <span className="badge badge-success"><CheckCircle2 size={12}/> Verified</span>
+                        ) : record?.verificationStatus === 'PENDING_ANCHOR' ? (
+                          <span className="badge" style={{ background: '#dbeafe', color: '#1d4ed8' }}><Clock size={12}/> Pending</span>
+                        ) : record?.verificationStatus === 'ANCHOR_FAILED' ? (
+                          <span className="badge" style={{ background: '#fee2e2', color: '#b91c1c' }}><ShieldAlert size={12}/> Anchor Failed</span>
                         ) : record?.verificationStatus === 'TAMPERED' ? (
                           <span className="badge badge-danger"><ShieldAlert size={12}/> Tampered</span>
                         ) : record?.verificationStatus === 'BLOCKCHAIN_UNREACHABLE' || record?.verificationStatus === 'UNVERIFIABLE' ? (
@@ -103,7 +107,11 @@ const MedicalRecords = () => {
                         ) : record?.verificationStatus === 'CONTRACT_NOT_DEPLOYED' ? (
                           <span className="badge badge-warning" title="Contract not deployed at this address"><ShieldAlert size={12}/> No Contract</span>
                         ) : record?.verificationStatus === 'CHAIN_MISMATCH' ? (
-                          <span className="badge badge-warning" title="Anchored before chain reset: needs re-anchor"><ShieldAlert size={12}/> Chain Mismatch</span>
+                          <span className="badge badge-warning" title={record?.network ? `Anchored on ${record.network}, re-anchor to fix` : "Anchored before chain reset: needs re-anchor"}><ShieldAlert size={12}/> Chain Mismatch</span>
+                        ) : record?.verificationStatus === 'LEGACY_EMPTY' ? (
+                          <span className="badge" style={{ background: '#f1f5f9', color: '#64748b' }} title="Empty test record"><ShieldAlert size={12}/> Legacy Empty</span>
+                        ) : record?.verificationStatus === 'NO_FINGERPRINT' ? (
+                          <span className="badge badge-warning" title="No cryptographic fingerprint recorded"><ShieldAlert size={12}/> No Fingerprint</span>
                         ) : record?.verificationStatus === 'NOT_ANCHORED' ? (
                           <span className="badge badge-warning" title="Record was never anchored on this chain"><ShieldAlert size={12}/> Not Anchored</span>
                         ) : (
@@ -113,9 +121,21 @@ const MedicalRecords = () => {
                       <td>
                         {record?.blockchainTxHash ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-muted)' }} title={record.blockchainTxHash}>
-                              {record.blockchainTxHash.substring(0, 10)}...
-                            </span>
+                            {record?.network === 'sepolia' ? (
+                              <a
+                                href={`https://sepolia.etherscan.io/tx/${record.blockchainTxHash}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: '#2563eb', display: 'inline-flex', alignItems: 'center', gap: '2px', textDecoration: 'underline' }}
+                                title={`View on Sepolia Etherscan (${record.blockchainTxHash})`}
+                              >
+                                {record.blockchainTxHash.substring(0, 10)}... <ExternalLink size={10} />
+                              </a>
+                            ) : (
+                              <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-muted)' }} title={record.blockchainTxHash}>
+                                {record.blockchainTxHash.substring(0, 10)}...
+                              </span>
+                            )}
                             <button onClick={() => navigator.clipboard.writeText(record.blockchainTxHash)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)' }} title="Copy Hash">
                               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                             </button>

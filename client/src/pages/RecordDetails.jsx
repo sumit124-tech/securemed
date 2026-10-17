@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { verifyRecord, getRecordHistory, editRecord } from '../api/records';
-import { ShieldCheck, ShieldAlert, FileText, Database, Key, ArrowDown, Activity, ChevronLeft, Stethoscope, RefreshCw, Edit2 } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, FileText, Database, Key, ArrowDown, Activity, ChevronLeft, Stethoscope, RefreshCw, Edit2, ExternalLink } from 'lucide-react';
 import { useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getDashboardPath } from '../utils/navigation';
@@ -233,10 +233,16 @@ const RecordDetails = () => {
                             <span className="badge" style={{ background: '#fee2e2', color: '#b91c1c' }}>Anchor Failed</span>
                           ) : item.verificationStatus === 'TAMPERED' ? (
                             <span className="badge badge-danger">Tampered</span>
+                          ) : item.verificationStatus === 'LEGACY_EMPTY' ? (
+                            <span className="badge" style={{ background: '#f1f5f9', color: '#64748b' }}>Legacy Empty</span>
+                          ) : item.verificationStatus === 'NO_FINGERPRINT' ? (
+                            <span className="badge badge-warning">No Fingerprint</span>
                           ) : item.verificationStatus === 'NOT_ANCHORED' ? (
                             <span className="badge badge-warning">Not Anchored</span>
                           ) : item.verificationStatus === 'CHAIN_MISMATCH' ? (
-                            <span className="badge badge-warning">Chain Mismatch</span>
+                            <span className="badge badge-warning" title={item.network ? `Anchored on ${item.network}, re-anchor to fix` : 'Chain mismatch'}>
+                              Chain Mismatch {item.network && `(${item.network})`}
+                            </span>
                           ) : item.verificationStatus === 'UNVERIFIABLE' ? (
                             <span className="badge badge-warning">Unverifiable</span>
                           ) : (
@@ -244,9 +250,25 @@ const RecordDetails = () => {
                           )}
                         </td>
                         <td>
-                          <span title={item.blockchainTxHash} style={{ cursor: 'help' }}>
-                            {item.blockchainTxHash ? item.blockchainTxHash.substring(0, 10) + '...' : 'N/A'}
-                          </span>
+                          {item.blockchainTxHash ? (
+                            (item.network === 'sepolia' || recordInfo?.currentNetwork === 'sepolia' || recordInfo?.network === 'sepolia') ? (
+                              <a
+                                href={`https://sepolia.etherscan.io/tx/${item.blockchainTxHash}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: '#2563eb', display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'underline' }}
+                                title={`View on Sepolia Etherscan (${item.blockchainTxHash})`}
+                              >
+                                {item.blockchainTxHash.substring(0, 10)}... <ExternalLink size={12} />
+                              </a>
+                            ) : (
+                              <span title={item.blockchainTxHash} style={{ cursor: 'help' }}>
+                                {item.blockchainTxHash.substring(0, 10) + '...'}
+                              </span>
+                            )
+                          ) : (
+                            <span className="text-muted">N/A</span>
+                          )}
                         </td>
                         <td>
                           {item._id !== recordId ? (
@@ -279,8 +301,10 @@ const RecordDetails = () => {
                recordInfo?.status === 'BLOCKCHAIN_UNREACHABLE' || recordInfo?.status === 'UNVERIFIABLE' ? 'BLOCKCHAIN OFFLINE' : 
                recordInfo?.status === 'CONTRACT_NOT_DEPLOYED' ? 'CONTRACT NOT DEPLOYED' :
                recordInfo?.status === 'CHAIN_MISMATCH' ? 'CHAIN MISMATCH' :
+               recordInfo?.status === 'LEGACY_EMPTY' ? 'LEGACY EMPTY RECORD' :
+               recordInfo?.status === 'NO_FINGERPRINT' ? 'NO STORED FINGERPRINT' :
                recordInfo?.status === 'NOT_ANCHORED' ? 'RECORD NOT ANCHORED' :
-               (isVerified ? 'INTEGRITY VERIFIED' : 'INTEGRITY WARNING')}
+               (isVerified ? 'INTEGRITY VERIFIED' : isTampered ? 'INTEGRITY WARNING' : 'NOT ANCHORED')}
             </h3>
             
             <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
@@ -293,9 +317,13 @@ const RecordDetails = () => {
                 : recordInfo?.status === 'CONTRACT_NOT_DEPLOYED'
                 ? "Contract not deployed at this address: redeploy and update .env.blockchain"
                 : recordInfo?.status === 'CHAIN_MISMATCH'
-                ? "Record was anchored before a chain reset. Admin can re-anchor records in System Health."
+                ? (recordInfo?.reason || `Anchored on ${recordInfo?.network || 'hardhat'}, re-anchor to fix`)
+                : recordInfo?.status === 'LEGACY_EMPTY'
+                ? "This early test record contains no clinical data ('Not provided'). It is unanchored."
+                : recordInfo?.status === 'NO_FINGERPRINT'
+                ? "Legacy record created before cryptographic hashing was enabled."
                 : recordInfo?.status === 'NOT_ANCHORED'
-                ? "Record was never anchored on this chain"
+                ? "Record was never anchored on this chain."
                 : (isVerified 
                 ? "This medical record has been verified. It has not been altered since it was created." 
                 : "These do not match: the record was modified after it was created.")}
@@ -303,7 +331,7 @@ const RecordDetails = () => {
 
             <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', margin: 0 }}>
-                {!isVerified && !['PENDING_ANCHOR', 'ANCHOR_FAILED', 'BLOCKCHAIN_UNREACHABLE', 'CONTRACT_NOT_DEPLOYED', 'NOT_ANCHORED', 'UNVERIFIABLE', 'CHAIN_MISMATCH'].includes(recordInfo?.status) ? 'Recalculated from current data' : 'Record Fingerprint'}
+                {!isVerified && !['PENDING_ANCHOR', 'ANCHOR_FAILED', 'BLOCKCHAIN_UNREACHABLE', 'CONTRACT_NOT_DEPLOYED', 'NOT_ANCHORED', 'UNVERIFIABLE', 'CHAIN_MISMATCH', 'LEGACY_EMPTY', 'NO_FINGERPRINT'].includes(recordInfo?.status) ? 'Recalculated from current data' : 'Record Fingerprint'}
               </p>
               <button 
                 className="btn btn-outline btn-sm" 
@@ -315,19 +343,21 @@ const RecordDetails = () => {
                 Verify Again
               </button>
             </div>
-            <div className="crypto-data" style={{ marginBottom: '1rem' }}>{recordInfo?.calculatedHash}</div>
+            <div className="crypto-data" style={{ marginBottom: '1rem' }}>{recordInfo?.calculatedHash || recordInfo?.storedHash || 'N/A'}</div>
 
             <div style={{ marginBottom: '1rem' }}>
               <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
-                {!isVerified && !['PENDING_ANCHOR', 'ANCHOR_FAILED', 'BLOCKCHAIN_UNREACHABLE', 'CONTRACT_NOT_DEPLOYED', 'NOT_ANCHORED', 'UNVERIFIABLE', 'CHAIN_MISMATCH'].includes(recordInfo?.status) ? 'Stored on blockchain (original)' : 'Verification Reference'}
+                {!isVerified && !['PENDING_ANCHOR', 'ANCHOR_FAILED', 'BLOCKCHAIN_UNREACHABLE', 'CONTRACT_NOT_DEPLOYED', 'NOT_ANCHORED', 'UNVERIFIABLE', 'CHAIN_MISMATCH', 'LEGACY_EMPTY', 'NO_FINGERPRINT'].includes(recordInfo?.status) ? 'Stored on blockchain (original)' : 'Verification Reference'}
               </p>
               <div className="crypto-data">
                 {recordInfo?.status === 'PENDING_ANCHOR' ? 'Pending anchoring (in retry queue)' :
                  recordInfo?.status === 'ANCHOR_FAILED' ? 'Anchoring failed (exceeded retries)' :
                  recordInfo?.status === 'BLOCKCHAIN_UNREACHABLE' || recordInfo?.status === 'UNVERIFIABLE' ? 'Blockchain unreachable' : 
                  recordInfo?.status === 'CONTRACT_NOT_DEPLOYED' ? 'Contract not deployed' :
-                 recordInfo?.status === 'CHAIN_MISMATCH' ? 'Chain mismatch (re-anchoring required)' :
-                 recordInfo?.status === 'NOT_ANCHORED' ? 'Not anchored' :
+                 recordInfo?.status === 'CHAIN_MISMATCH' ? `Chain mismatch (${recordInfo?.reason || 're-anchoring required'})` :
+                 recordInfo?.status === 'LEGACY_EMPTY' ? 'Empty test record (not anchored)' :
+                 recordInfo?.status === 'NO_FINGERPRINT' ? 'No stored fingerprint' :
+                 recordInfo?.status === 'NOT_ANCHORED' ? 'Not anchored on active chain' :
                  (recordInfo?.blockchainHash || 'Not Found')}
               </div>
             </div>
@@ -337,11 +367,48 @@ const RecordDetails = () => {
               <div className="crypto-data">
                 {recordInfo?.status === 'PENDING_ANCHOR'
                   ? 'Pending confirmation (awaiting block generation)'
+                  : recordInfo?.status === 'LEGACY_EMPTY'
+                  ? 'None (legacy empty record)'
                   : recordInfo?.status === 'NOT_ANCHORED' && recordInfo?.blockchainTxHash 
                   ? 'Transaction not found on current chain' 
-                  : (recordInfo?.blockchainTxHash || 'Not anchored')}
+                  : recordInfo?.blockchainTxHash ? (
+                    (recordInfo?.network === 'sepolia' || recordInfo?.currentNetwork === 'sepolia') ? (
+                      <a
+                        href={`https://sepolia.etherscan.io/tx/${recordInfo.blockchainTxHash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: '#2563eb', display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'underline', wordBreak: 'break-all' }}
+                        title="View transaction on Sepolia Etherscan"
+                      >
+                        {recordInfo.blockchainTxHash} <ExternalLink size={12} />
+                      </a>
+                    ) : (
+                      recordInfo.blockchainTxHash
+                    )
+                  ) : 'Not anchored'}
               </div>
             </div>
+
+            {recordInfo?.contractAddress && (
+              <div style={{ marginBottom: '1rem' }}>
+                <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Contract Address</p>
+                <div className="crypto-data">
+                  {(recordInfo?.network === 'sepolia' || recordInfo?.currentNetwork === 'sepolia') ? (
+                    <a
+                      href={`https://sepolia.etherscan.io/address/${recordInfo.contractAddress}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: '#2563eb', display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'underline', wordBreak: 'break-all' }}
+                      title="View contract on Sepolia Etherscan"
+                    >
+                      {recordInfo.contractAddress} <ExternalLink size={12} />
+                    </a>
+                  ) : (
+                    recordInfo.contractAddress
+                  )}
+                </div>
+              </div>
+            )}
             
             <div>
               <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Timestamp</p>

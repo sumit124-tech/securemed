@@ -91,17 +91,19 @@ export const runIntegrityAudit = async ({ trigger = 'SCHEDULED', triggeredBy = '
     const pendingCount = await MedicalRecord.countDocuments({ verificationStatus: 'PENDING_ANCHOR' });
     const anchorFailedCount = await MedicalRecord.countDocuments({ verificationStatus: 'ANCHOR_FAILED' });
     const notAnchoredExplicitCount = await MedicalRecord.countDocuments({ verificationStatus: 'NOT_ANCHORED' });
+    const legacyEmptyCount = await MedicalRecord.countDocuments({ verificationStatus: 'LEGACY_EMPTY' });
+    const noFingerprintCount = await MedicalRecord.countDocuments({ verificationStatus: 'NO_FINGERPRINT' });
     const missingTxCount = await MedicalRecord.countDocuments({
       blockchainTxHash: { $in: [null, ''] },
-      verificationStatus: { $nin: ['PENDING_ANCHOR', 'ANCHOR_FAILED', 'NOT_ANCHORED'] }
+      verificationStatus: { $nin: ['PENDING_ANCHOR', 'ANCHOR_FAILED', 'NOT_ANCHORED', 'LEGACY_EMPTY', 'NO_FINGERPRINT'] }
     });
-    const totalNotAnchored = notAnchoredExplicitCount + missingTxCount;
+    const totalNotAnchored = notAnchoredExplicitCount + missingTxCount + legacyEmptyCount + noFingerprintCount;
 
     // 3. Query all anchored record versions in batches of 50
-    // Excludes PENDING_ANCHOR, NOT_ANCHORED, and ANCHOR_FAILED
+    // Excludes PENDING_ANCHOR, NOT_ANCHORED, ANCHOR_FAILED, LEGACY_EMPTY, and NO_FINGERPRINT
     const auditQuery = {
       blockchainTxHash: { $exists: true, $nin: [null, ''] },
-      verificationStatus: { $nin: ['PENDING_ANCHOR', 'NOT_ANCHORED', 'ANCHOR_FAILED'] }
+      verificationStatus: { $nin: ['PENDING_ANCHOR', 'NOT_ANCHORED', 'ANCHOR_FAILED', 'LEGACY_EMPTY', 'NO_FINGERPRINT'] }
     };
 
     let checkedCount = 0;
@@ -188,8 +190,12 @@ export const runIntegrityAudit = async ({ trigger = 'SCHEDULED', triggeredBy = '
             }
           } else if (result.status === 'UNVERIFIABLE' || result.status === 'BLOCKCHAIN_UNREACHABLE' || result.status === 'CONTRACT_NOT_DEPLOYED') {
             unverifiableCount++;
-          } else if (result.status === 'CHAIN_MISMATCH' || result.status === 'NOT_ANCHORED') {
-            // Unexpected on-chain missing state for anchored record
+          } else if (result.status === 'CHAIN_MISMATCH' || result.status === 'NOT_ANCHORED' || result.status === 'LEGACY_EMPTY' || result.status === 'NO_FINGERPRINT') {
+            // If the record was previously marked TAMPERED, restore flag to non-tampered state
+            if (record.verificationStatus === 'TAMPERED') {
+              record.verificationStatus = result.status;
+              await record.save();
+            }
             unverifiableCount++;
           }
         } catch (itemErr) {

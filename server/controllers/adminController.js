@@ -61,28 +61,50 @@ export const getSystemHealth = async (req, res) => {
       lastHealthStatus.mongodb = 'up';
     }
 
-    // 3. Blockchain check with 2-second timeout and contract address
+    // 3. Blockchain check with timeout, network details, signer address, and balance
+    if (typeof blockchainService?.reloadContract === 'function') {
+      try { blockchainService.reloadContract(); } catch (e) {}
+    }
+    const networkName = blockchainService?.getNetworkName?.() || 'hardhat';
+    const isSepolia = networkName === 'sepolia';
+
     let blockchain = {
       status: 'down',
-      contractAddress: null
+      network: networkName,
+      isSepolia,
+      contractAddress: null,
+      signerAddress: null,
+      signerBalance: null,
+      isLowBalance: false,
+      rpcErrorType: null
     };
 
     try {
       if (typeof blockchainService?.getContractAddress === 'function') {
         blockchain.contractAddress = blockchainService.getContractAddress();
       }
+      if (typeof blockchainService?.getSignerAddress === 'function') {
+        blockchain.signerAddress = blockchainService.getSignerAddress();
+      }
+      if (typeof blockchainService?.getSignerBalance === 'function') {
+        const bal = await blockchainService.getSignerBalance();
+        blockchain.signerBalance = bal;
+        if (bal !== null && isSepolia && parseFloat(bal) < 0.05) {
+          blockchain.isLowBalance = true;
+        }
+      }
     } catch (e) {
-      // ignore contract address resolution error
+      // ignore helper resolution error
     }
 
     try {
       if (!blockchainService?.provider) {
-        throw new Error('Blockchain provider is not configured');
+        throw new Error('Blockchain provider is not configured. Check RPC URL in server/.env.');
       }
 
-      // Race getBlockNumber with a 2-second timeout
+      // Race getBlockNumber with a 3-second timeout
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Blockchain provider request timed out (2s)')), 2000)
+        setTimeout(() => reject(new Error('Blockchain provider request timed out (3s)')), 3000)
       );
 
       const blockNumber = await Promise.race([
@@ -94,7 +116,21 @@ export const getSystemHealth = async (req, res) => {
       blockchain.latestBlock = blockNumber;
     } catch (bcErr) {
       blockchain.status = 'down';
-      blockchain.error = bcErr.message || 'Unable to connect to blockchain node';
+      const msg = bcErr.message || '';
+      blockchain.error = msg;
+
+      // Classify RPC error types for clear messages
+      if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('invalid api key') || msg.includes('bad api key')) {
+        blockchain.rpcErrorType = 'INVALID_KEY';
+        blockchain.error = 'Invalid RPC API key (HTTP 401 Unauthorized). Please check SEPOLIA_RPC_URL.';
+      } else if (msg.includes('429') || msg.includes('Too Many Requests') || msg.includes('rate limit')) {
+        blockchain.rpcErrorType = 'RATE_LIMITED';
+        blockchain.error = 'RPC Rate Limited (HTTP 429 Too Many Requests). RPC provider limit exceeded.';
+      } else if (msg.includes('ECONNREFUSED')) {
+        blockchain.error = isSepolia 
+          ? 'Unable to connect to Sepolia RPC endpoint.' 
+          : 'Local Hardhat node is not running on 127.0.0.1:8545.';
+      }
     }
 
     // Outage alert for Blockchain on up -> down transition
@@ -624,8 +660,13 @@ export const getRecordsOverview = async (req, res) => {
       today,
       thisWeek,
       thisMonth,
-      anchoredOnChain,
-      notAnchored,
+      latestAudit,
+      verifiedCount,
+      pendingCount,
+      anchorFailedCount,
+      tamperedCount,
+      notAnchoredExplicitCount,
+      unclassifiedNotAnchored,
       byTypeRaw,
       perDayRaw
     ] = await Promise.all([
@@ -634,23 +675,28 @@ export const getRecordsOverview = async (req, res) => {
       safeOp(MedicalRecord.countDocuments({ createdAt: { $gte: sevenDaysAgo } }), 0, 'thisWeek'),
       safeOp(MedicalRecord.countDocuments({ createdAt: { $gte: startOfMonth } }), 0, 'thisMonth'),
       safeOp(
-        MedicalRecord.countDocuments({
-          blockchainTxHash: { $exists: true, $ne: null, $nin: ['', null] }
-        }),
-        0,
-        'anchoredOnChain'
+        IntegrityAuditRun.findOne({ status: 'COMPLETED' })
+          .sort({ finishedAt: -1, startedAt: -1 })
+          .lean(),
+        null,
+        'latestAudit'
       ),
-      safeOp(
-        MedicalRecord.countDocuments({
-          $or: [
-            { blockchainTxHash: { $exists: false } },
-            { blockchainTxHash: null },
-            { blockchainTxHash: '' }
-          ]
-        }),
-        0,
-        'notAnchored'
-      ),
+      safeOp(MedicalRecord.countDocuments({ verificationStatus: 'VERIFIED' }), 0, 'verifiedCount'),
+      safeOp(MedicalRecord.countDocuments({ verificationStatus: 'PENDING_ANCHOR' }), 0, 'pendingCount'),
+      safeOp(MedicalRecord.countDocuments({ verificationStatus: 'ANCHOR_FAILED' }), 0, 'anchorFailedCount'),
+      safeOp(MedicalRecord.countDocuments({ verificationStatus: 'TAMPERED' }), 0, 'tamperedCount'),
+      safeOp(MedicalRecord.countDocuments({
+        verificationStatus: { $in: ['NOT_ANCHORED', 'LEGACY_EMPTY', 'NO_FINGERPRINT'] }
+      }), 0, 'notAnchoredExplicitCount'),
+      safeOp(MedicalRecord.countDocuments({
+        $or: [
+          { blockchainTxHash: { $in: [null, ''] } },
+          { verificationStatus: { $exists: false } },
+          { verificationStatus: null },
+          { verificationStatus: '' }
+        ],
+        verificationStatus: { $nin: ['VERIFIED', 'PENDING_ANCHOR', 'ANCHOR_FAILED', 'TAMPERED', 'NOT_ANCHORED', 'LEGACY_EMPTY', 'NO_FINGERPRINT'] }
+      }), 0, 'unclassifiedNotAnchored'),
       safeOp(
         MedicalRecord.aggregate([
           {
@@ -727,6 +773,35 @@ export const getRecordsOverview = async (req, res) => {
       });
     }
 
+    // Compute anchored (verified on active chain), pending, not anchored, tampered from latest audit and record verification statuses
+    let verified = verifiedCount;
+    let pending = pendingCount + anchorFailedCount;
+    let tampered = tamperedCount;
+    let notAnchored = notAnchoredExplicitCount + unclassifiedNotAnchored;
+
+    if (latestAudit && latestAudit.counts) {
+      const auditCounts = latestAudit.counts;
+      const auditTotal = (auditCounts.verified || 0) + (auditCounts.notAnchored || 0) + (auditCounts.pending || 0) + (auditCounts.tampered || 0);
+      if (auditTotal === total) {
+        verified = auditCounts.verified || 0;
+        pending = auditCounts.pending || 0;
+        notAnchored = auditCounts.notAnchored || 0;
+        tampered = auditCounts.tampered || 0;
+      } else {
+        verified = Math.max(verified, auditCounts.verified || 0);
+      }
+    }
+
+    const accounted = verified + pending + tampered + notAnchored;
+    if (accounted < total) {
+      notAnchored += (total - accounted);
+    }
+
+    const coverage = total > 0 ? Number(((verified / total) * 100).toFixed(1)) : 100;
+    const currentNetwork = (typeof blockchainService?.getNetworkName === 'function'
+      ? blockchainService.getNetworkName()
+      : process.env.CHAIN_NETWORK) || 'hardhat';
+
     res.json({
       success: true,
       data: {
@@ -736,8 +811,14 @@ export const getRecordsOverview = async (req, res) => {
         thisMonth,
         byType,
         perDay,
-        anchoredOnChain,
-        notAnchored
+        anchoredOnChain: verified, // "Anchored" means VERIFIED on current chain, not "has a txHash"
+        verified,
+        pending,
+        notAnchored,
+        tampered,
+        coverage,
+        network: currentNetwork,
+        lastAuditDate: latestAudit?.finishedAt || latestAudit?.startedAt || null
       }
     });
   } catch (error) {
@@ -752,7 +833,13 @@ export const getRecordsOverview = async (req, res) => {
         byType: [],
         perDay: [],
         anchoredOnChain: 0,
-        notAnchored: 0
+        verified: 0,
+        pending: 0,
+        notAnchored: 0,
+        tampered: 0,
+        coverage: 100,
+        network: 'hardhat',
+        lastAuditDate: null
       }
     });
   }

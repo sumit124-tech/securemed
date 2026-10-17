@@ -16,6 +16,7 @@ import {
 
 const AdminRecords = () => {
   const [data, setData] = useState(null);
+  const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -27,9 +28,19 @@ const AdminRecords = () => {
     try {
       setLoading(true);
       setError('');
-      const res = await api.get('/admin/records/overview');
-      if (res.data?.success && res.data?.data) {
-        setData(res.data.data);
+      const [overviewRes, healthRes] = await Promise.all([
+        api.get('/admin/records/overview'),
+        api.get('/admin/health').catch(err => {
+          console.warn('Failed to fetch health for network name:', err.message);
+          return null;
+        })
+      ]);
+
+      if (overviewRes.data?.success && overviewRes.data?.data) {
+        setData(overviewRes.data.data);
+      }
+      if (healthRes?.data?.success && healthRes?.data?.data) {
+        setHealth(healthRes.data.data);
       }
     } catch (err) {
       console.error('Fetch records overview error:', err);
@@ -45,6 +56,62 @@ const AdminRecords = () => {
   // Compute maximum daily count for SVG chart scaling
   const perDay = data?.perDay || [];
   const maxDaily = Math.max(...perDay.map(d => d.count), 5);
+
+  // Derive dynamic network name from health endpoint or overview data
+  const rawNetwork = health?.blockchain?.network || data?.network || 'hardhat';
+  const networkName = rawNetwork.charAt(0).toUpperCase() + rawNetwork.slice(1).toLowerCase();
+
+  // Blockchain anchoring metrics
+  const totalCount = data?.total ?? 0;
+  const verifiedCount = data?.verified ?? data?.anchoredOnChain ?? 0;
+  const pendingCount = data?.pending ?? 0;
+  const notAnchoredCount = data?.notAnchored ?? 0;
+  const tamperedCount = data?.tampered ?? 0;
+
+  // Real number coverage: verified / total versions
+  const coverageNumber = totalCount > 0 
+    ? (typeof data?.coverage === 'number' ? data.coverage : Number(((verifiedCount / totalCount) * 100).toFixed(1)))
+    : 100;
+  const coverageDisplay = coverageNumber % 1 === 0 ? coverageNumber.toFixed(0) : coverageNumber.toFixed(1);
+
+  // Badge state: green ONLY when verified === total; red ONLY when tampered > 0; amber if any not anchored or pending
+  const isRed = tamperedCount > 0;
+  const isGreen = !isRed && totalCount > 0 && verifiedCount === totalCount;
+  const isAmber = !isRed && !isGreen;
+
+  let badgeBg = 'rgba(245, 158, 11, 0.12)';
+  let badgeColor = '#B45309';
+  let badgeIcon = <Clock size={13} />;
+  let badgeText = 'Sync In Progress';
+
+  if (isRed) {
+    badgeBg = 'rgba(239, 68, 68, 0.12)';
+    badgeColor = 'var(--danger)';
+    badgeIcon = <AlertTriangle size={13} />;
+    badgeText = `${tamperedCount} Tampered Record(s)`;
+  } else if (isGreen) {
+    badgeBg = 'rgba(16, 185, 129, 0.12)';
+    badgeColor = 'var(--success)';
+    badgeIcon = <CheckCircle2 size={13} />;
+    badgeText = '100% On-Chain Integrity';
+  } else {
+    badgeBg = 'rgba(245, 158, 11, 0.12)';
+    badgeColor = '#B45309';
+    badgeIcon = <Clock size={13} />;
+    if (totalCount === 0) {
+      badgeBg = 'rgba(100, 116, 139, 0.12)';
+      badgeColor = 'var(--text-muted)';
+      badgeText = 'No Records';
+    } else if (notAnchoredCount > 0 && pendingCount > 0) {
+      badgeText = `${notAnchoredCount} Not Anchored, ${pendingCount} Pending`;
+    } else if (notAnchoredCount > 0) {
+      badgeText = `${notAnchoredCount} Not Anchored`;
+    } else if (pendingCount > 0) {
+      badgeText = `${pendingCount} Pending Anchoring`;
+    } else {
+      badgeText = 'Sync In Progress';
+    }
+  }
 
   return (
     <div>
@@ -326,11 +393,11 @@ const AdminRecords = () => {
                 width: '32px', 
                 height: '32px', 
                 borderRadius: '8px', 
-                background: 'rgba(16, 185, 129, 0.12)', 
+                background: isRed ? 'rgba(239, 68, 68, 0.12)' : isGreen ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)', 
                 display: 'flex', 
                 alignItems: 'center', 
                 justifyContent: 'center',
-                color: 'var(--success)'
+                color: isRed ? 'var(--danger)' : isGreen ? 'var(--success)' : '#B45309'
               }}
             >
               <Shield size={18} />
@@ -340,7 +407,7 @@ const AdminRecords = () => {
                 Blockchain Cryptographic Anchoring Status
               </h3>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Immutable SHA-256 state commitments on Hardhat smart contract
+                Immutable SHA-256 state commitments on {networkName} smart contract
               </span>
             </div>
           </div>
@@ -350,42 +417,71 @@ const AdminRecords = () => {
               display: 'inline-flex', 
               alignItems: 'center', 
               gap: '0.4rem', 
-              padding: '0.2rem 0.65rem', 
+              padding: '0.25rem 0.75rem', 
               borderRadius: '999px', 
               fontSize: '0.75rem', 
               fontWeight: 600,
-              background: data?.notAnchored === 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
-              color: data?.notAnchored === 0 ? 'var(--success)' : '#B45309'
+              background: badgeBg,
+              color: badgeColor
             }}
           >
-            <CheckCircle2 size={13} />
-            {data?.notAnchored === 0 ? '100% On-Chain Integrity' : 'Sync In Progress'}
+            {badgeIcon}
+            {badgeText}
           </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
           
           <div style={{ background: 'var(--bg-main, #F8FAFC)', border: '1px solid var(--border-light)', borderRadius: '10px', padding: '1rem' }}>
             <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
-              Anchored On-Chain
+              Anchored (Verified)
             </div>
             <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--success)' }}>
-              {(data?.anchoredOnChain ?? 0).toLocaleString()}
+              {verifiedCount.toLocaleString()}
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-              SHA-256 hash verified with transaction receipt
+              Cryptographically verified on {networkName}
             </div>
           </div>
 
           <div style={{ background: 'var(--bg-main, #F8FAFC)', border: '1px solid var(--border-light)', borderRadius: '10px', padding: '1rem' }}>
             <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
-              Pending / Off-Chain
+              Pending Anchoring
             </div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: (data?.notAnchored ?? 0) > 0 ? 'var(--warning)' : 'var(--text-main)' }}>
-              {(data?.notAnchored ?? 0).toLocaleString()}
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: pendingCount > 0 ? '#2563EB' : 'var(--text-main)' }}>
+              {pendingCount.toLocaleString()}
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-              Records awaiting next ledger verification block
+              Queued for blockchain state commitment
+            </div>
+          </div>
+
+          <div style={{ background: 'var(--bg-main, #F8FAFC)', border: '1px solid var(--border-light)', borderRadius: '10px', padding: '1rem' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
+              Not Anchored
+            </div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: notAnchoredCount > 0 ? '#B45309' : 'var(--text-main)' }}>
+              {notAnchoredCount.toLocaleString()}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+              Off-chain or unanchored legacy versions
+            </div>
+          </div>
+
+          <div style={{ 
+            background: tamperedCount > 0 ? '#FEF2F2' : 'var(--bg-main, #F8FAFC)', 
+            border: `1px solid ${tamperedCount > 0 ? '#FCA5A5' : 'var(--border-light)'}`, 
+            borderRadius: '10px', 
+            padding: '1rem' 
+          }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: tamperedCount > 0 ? '#DC2626' : 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
+              Tampered
+            </div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: tamperedCount > 0 ? 'var(--danger)' : 'var(--text-main)' }}>
+              {tamperedCount.toLocaleString()}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: tamperedCount > 0 ? '#DC2626' : 'var(--text-muted)', marginTop: '4px' }}>
+              {tamperedCount > 0 ? 'Cryptographic mismatches detected' : 'Zero tampering detected'}
             </div>
           </div>
 
@@ -394,10 +490,10 @@ const AdminRecords = () => {
               Integrity Coverage
             </div>
             <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--primary)' }}>
-              {data?.total ? Math.round(((data.anchoredOnChain || 0) / data.total) * 100) : 100}%
+              {coverageDisplay}%
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-              Tamper-evident blockchain verification ratio
+              {verifiedCount} of {totalCount} versions verified
             </div>
           </div>
 

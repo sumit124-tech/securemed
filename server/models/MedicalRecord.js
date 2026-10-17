@@ -13,6 +13,7 @@ const medicalRecordSchema = new mongoose.Schema({
   currentHash: { type: String },        // SHA-256 hash computed before saving
   blockchainTxHash: { type: String },   // Tx receipt from Hardhat
   contractAddress: { type: String },    // Smart contract address anchored to
+  network: { type: String, default: 'hardhat' }, // Blockchain network ('hardhat', 'sepolia', etc.)
   anchoredAt: { type: Date },           // Timestamp anchored to blockchain
   verificationStatus: { type: String }, // Verification status ('VERIFIED', 'NOT_ANCHORED', 'CHAIN_MISMATCH', 'TAMPERED', 'PENDING_ANCHOR', etc.)
   anchorAttempts: { type: Number, default: 0 }, // Retry count for pending blockchain anchoring

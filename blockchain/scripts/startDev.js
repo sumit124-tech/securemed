@@ -86,6 +86,7 @@ function runCommand(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const proc = spawn(command, args, {
       stdio: 'inherit',
+      shell: process.platform === 'win32',
       ...options
     });
 
@@ -115,7 +116,8 @@ async function main() {
 
     hardhatNodeProcess = spawn(npxCmd, ['hardhat', 'node', '--hostname', RPC_HOST, '--port', String(RPC_PORT)], {
       cwd: blockchainDir,
-      stdio: 'inherit'
+      stdio: 'inherit',
+      shell: process.platform === 'win32'
     });
 
     hardhatNodeProcess.on('error', (err) => {
@@ -157,7 +159,7 @@ async function main() {
   const reanchorScript = path.resolve(serverDir, 'scripts/reanchorRecords.js');
 
   try {
-    await runCommand(process.execPath, [reanchorScript], {
+    await runCommand('node', [reanchorScript], {
       cwd: serverDir
     });
     console.log('\n[chain:start] Re-anchoring successfully completed!');

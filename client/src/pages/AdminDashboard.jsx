@@ -1419,31 +1419,47 @@ const AdminDashboard = () => {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <Cpu size={17} style={{ color: 'var(--text-muted)' }} />
-                      <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)' }}>Blockchain Node</span>
+                      <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)' }}>
+                        {health?.blockchain?.isSepolia ? 'Ethereum Sepolia' : 'Blockchain Node'}
+                      </span>
                     </div>
-                    <span 
-                      style={{ 
-                        display: 'inline-flex', 
-                        alignItems: 'center', 
-                        gap: '0.4rem', 
-                        fontSize: '0.75rem', 
-                        fontWeight: 600,
-                        padding: '0.2rem 0.6rem',
-                        borderRadius: '999px',
-                        background: health?.blockchain?.status === 'up' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-                        color: health?.blockchain?.status === 'up' ? 'var(--success)' : 'var(--danger)'
-                      }}
-                    >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                       <span 
                         style={{ 
-                          width: '7px', 
-                          height: '7px', 
-                          borderRadius: '50%', 
-                          background: health?.blockchain?.status === 'up' ? 'var(--success)' : 'var(--danger)' 
-                        }} 
-                      />
-                      {health?.blockchain?.status === 'up' ? 'Synced' : 'Offline'}
-                    </span>
+                          fontSize: '0.7rem', 
+                          fontWeight: 600, 
+                          padding: '0.15rem 0.5rem', 
+                          borderRadius: '999px',
+                          background: health?.blockchain?.isSepolia ? 'rgba(99, 102, 241, 0.12)' : 'rgba(100, 116, 139, 0.12)',
+                          color: health?.blockchain?.isSepolia ? '#6366F1' : 'var(--text-muted)'
+                        }}
+                      >
+                        {health?.blockchain?.isSepolia ? 'Sepolia Testnet' : 'Local Hardhat'}
+                      </span>
+                      <span 
+                        style={{ 
+                          display: 'inline-flex', 
+                          alignItems: 'center', 
+                          gap: '0.4rem', 
+                          fontSize: '0.75rem', 
+                          fontWeight: 600,
+                          padding: '0.2rem 0.6rem',
+                          borderRadius: '999px',
+                          background: health?.blockchain?.status === 'up' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                          color: health?.blockchain?.status === 'up' ? 'var(--success)' : 'var(--danger)'
+                        }}
+                      >
+                        <span 
+                          style={{ 
+                            width: '7px', 
+                            height: '7px', 
+                            borderRadius: '50%', 
+                            background: health?.blockchain?.status === 'up' ? 'var(--success)' : 'var(--danger)' 
+                          }} 
+                        />
+                        {health?.blockchain?.status === 'up' ? 'Synced' : 'Offline'}
+                      </span>
+                    </div>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
@@ -1456,22 +1472,74 @@ const AdminDashboard = () => {
                       ) : 'Unavailable'}
                     </div>
 
+                    {health?.blockchain?.signerAddress && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                        <span style={{ color: 'var(--text-main)', fontWeight: 500 }}>Signer: </span>
+                        <code 
+                          style={{ 
+                            fontSize: '0.75rem', 
+                            background: 'rgba(0,0,0,0.05)', 
+                            padding: '0.1rem 0.35rem', 
+                            borderRadius: '4px',
+                            fontFamily: 'monospace'
+                          }}
+                          title={health.blockchain.signerAddress}
+                        >
+                          {`${health.blockchain.signerAddress.substring(0, 6)}...${health.blockchain.signerAddress.substring(health.blockchain.signerAddress.length - 4)}`}
+                        </code>
+                        {health?.blockchain?.signerBalance != null && (
+                          <span style={{ 
+                            fontSize: '0.75rem', 
+                            fontWeight: 600, 
+                            color: health.blockchain.isLowBalance ? '#D97706' : 'var(--text-main)',
+                            marginLeft: '2px'
+                          }}>
+                            ({parseFloat(health.blockchain.signerBalance).toFixed(4)} ETH)
+                          </span>
+                        )}
+                      </div>
+                    )}
+
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
                       <span style={{ color: 'var(--text-main)', fontWeight: 500 }}>Contract: </span>
                       {health?.blockchain?.contractAddress ? (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                          <code 
-                            style={{ 
-                              fontSize: '0.75rem', 
-                              background: 'rgba(0,0,0,0.05)', 
-                              padding: '0.1rem 0.35rem', 
-                              borderRadius: '4px',
-                              fontFamily: 'monospace'
-                            }}
-                            title={health.blockchain.contractAddress}
-                          >
-                            {`${health.blockchain.contractAddress.substring(0, 6)}...${health.blockchain.contractAddress.substring(health.blockchain.contractAddress.length - 4)}`}
-                          </code>
+                          {health?.blockchain?.isSepolia ? (
+                            <a
+                              href={`https://sepolia.etherscan.io/address/${health.blockchain.contractAddress}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                color: '#2563EB',
+                                textDecoration: 'none',
+                                fontFamily: 'monospace',
+                                fontSize: '0.75rem',
+                                background: 'rgba(37, 99, 235, 0.08)',
+                                padding: '0.1rem 0.35rem',
+                                borderRadius: '4px'
+                              }}
+                              title="View contract on Sepolia Etherscan"
+                            >
+                              {`${health.blockchain.contractAddress.substring(0, 6)}...${health.blockchain.contractAddress.substring(health.blockchain.contractAddress.length - 4)}`}
+                              <ExternalLink size={12} />
+                            </a>
+                          ) : (
+                            <code 
+                              style={{ 
+                                fontSize: '0.75rem', 
+                                background: 'rgba(0,0,0,0.05)', 
+                                padding: '0.1rem 0.35rem', 
+                                borderRadius: '4px',
+                                fontFamily: 'monospace'
+                              }}
+                              title={health.blockchain.contractAddress}
+                            >
+                              {`${health.blockchain.contractAddress.substring(0, 6)}...${health.blockchain.contractAddress.substring(health.blockchain.contractAddress.length - 4)}`}
+                            </code>
+                          )}
                           <button
                             type="button"
                             onClick={() => handleCopyContract(health.blockchain.contractAddress)}
@@ -1505,6 +1573,29 @@ const AdminDashboard = () => {
                       )}
                     </div>
                   </div>
+
+                  {/* Low Balance Warning Banner */}
+                  {health?.blockchain?.isLowBalance && (
+                    <div 
+                      style={{ 
+                        marginTop: '0.75rem',
+                        padding: '0.5rem 0.75rem', 
+                        background: '#FEF3C7', 
+                        border: '1px solid #FCD34D', 
+                        borderRadius: '6px',
+                        fontSize: '0.75rem',
+                        color: '#92400E',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem'
+                      }}
+                    >
+                      <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+                      <span>
+                        <strong>Low Signer Balance:</strong> Only {parseFloat(health.blockchain.signerBalance).toFixed(4)} ETH remaining. Please top up Sepolia testnet ETH.
+                      </span>
+                    </div>
+                  )}
                 </div>
 
               </div>

@@ -92,10 +92,10 @@ export const processAnchorQueue = async ({ calledBy = 'WORKER' } = {}) => {
     let permanentlyFailedCount = 0;
     const currentContract = blockchainService.getContractAddress();
 
-    // 4. Process records sequentially to avoid local Hardhat nonce race conditions
+    // 4. Process records sequentially to avoid nonce race conditions
     for (const rec of pendingRecords) {
       // Prevent anchoring the same version twice
-      if (rec.blockchainTxHash || rec.verificationStatus !== 'PENDING_ANCHOR') {
+      if (rec.verificationStatus === 'VERIFIED') {
         continue;
       }
 
@@ -105,11 +105,26 @@ export const processAnchorQueue = async ({ calledBy = 'WORKER' } = {}) => {
       }
 
       try {
-        // Anchor stored fingerprint
-        const receipt = await blockchainService.storeHash(rec._id, rec.currentHash);
+        // Step 1: Broadcast transaction to network and store txHash immediately as soon as sent
+        let tx = null;
+        if (!rec.blockchainTxHash) {
+          const sendResult = await blockchainService.sendHash(rec._id, rec.currentHash);
+          rec.blockchainTxHash = sendResult.txHash;
+          rec.contractAddress = currentContract;
+          rec.network = blockchainService.getNetworkName();
+          await rec.save(); // Stored as soon as it is sent!
+          tx = sendResult.tx;
+        }
 
-        rec.blockchainTxHash = receipt.txHash;
-        rec.contractAddress = currentContract;
+        // Step 2: Wait for confirmation (1 block on Sepolia or local)
+        if (tx) {
+          const confirmations = blockchainService.isSepolia() ? 1 : 1;
+          await tx.wait(confirmations);
+        } else if (rec.blockchainTxHash && blockchainService.provider) {
+          await blockchainService.provider.waitForTransaction(rec.blockchainTxHash, blockchainService.isSepolia() ? 1 : 1);
+        }
+
+        // Step 3: Mark VERIFIED when confirmed
         rec.anchoredAt = new Date();
         rec.verificationStatus = 'VERIFIED';
         rec.anchorError = null;
@@ -125,17 +140,17 @@ export const processAnchorQueue = async ({ calledBy = 'WORKER' } = {}) => {
             resourceId: rec._id,
             resourceLabel: `Medical record #${rec._id.toString().slice(-6)} (v${rec.version || 1})`,
             relatedPatient: rec.patient,
-            details: `Successfully anchored fingerprint ${rec.currentHash.slice(0, 10)}... (tx: ${receipt.txHash}) via queue worker (${calledBy})`
+            details: `Successfully anchored fingerprint ${rec.currentHash.slice(0, 10)}... (tx: ${rec.blockchainTxHash}) on ${blockchainService.getNetworkName()} via queue worker (${calledBy})`
           });
         } catch (auditErr) {
           console.warn('[Anchor Queue] Failed to write audit log:', auditErr.message);
         }
 
         anchoredCount++;
-        console.log(`[Anchor Queue] Anchored record #${rec._id.toString().slice(-6)} (tx: ${receipt.txHash.slice(0, 14)}...)`);
+        console.log(`[Anchor Queue] Anchored record #${rec._id.toString().slice(-6)} on ${blockchainService.getNetworkName()} (tx: ${rec.blockchainTxHash.slice(0, 14)}...)`);
         
-        // Small pause between transactions to allow local block mining
-        await new Promise(r => setTimeout(r, 100));
+        // Pause between transactions to allow block mining and respect rate limits
+        await new Promise(r => setTimeout(r, blockchainService.isSepolia() ? 1500 : 100));
       } catch (anchorErr) {
         failedCount++;
         const currentAttempts = (rec.anchorAttempts || 0) + 1;

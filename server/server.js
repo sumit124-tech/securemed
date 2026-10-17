@@ -108,21 +108,69 @@ connectDB().then(() => {
     // Check blockchain asynchronously without blocking
     import('./services/blockchainService.js').then((module) => {
       const blockchainService = module.default;
-      blockchainService.provider.getNetwork().then((network) => {
-        console.log(`Blockchain connected: ${network.name}`);
-        const address = blockchainService.getContractAddress();
-        blockchainService.provider.getCode(address).then(code => {
-          if (code === '0x') {
-            console.warn(`WARNING: No contract code found at address ${address}. Please redeploy and update .env.blockchain.`);
-          } else {
-            console.log(`Smart contract verified at ${address}`);
+      const activeNetwork = blockchainService.getNetworkName();
+
+      // Fail at startup with a clear message if required variables are missing for the selected network
+      if (activeNetwork === 'sepolia') {
+        const hasRpc = !!(process.env.SEPOLIA_RPC_URL || process.env.SEPOLIA_RPC_UR || process.env.BLOCKCHAIN_RPC_URL);
+        const hasKey = !!(process.env.DEPLOYER_PRIVATE_KEY || process.env.SYSTEM_WALLET_PRIVATE_KEY);
+        if (!hasRpc || !hasKey) {
+          const missing = [];
+          if (!hasRpc) missing.push('SEPOLIA_RPC_URL');
+          if (!hasKey) missing.push('DEPLOYER_PRIVATE_KEY');
+          console.error(`\n===============================================================`);
+          console.error(`[FATAL CONFIG ERROR] CHAIN_NETWORK is set to "sepolia" but required environment variables are missing in server/.env:`);
+          console.error(`Missing: ${missing.join(', ')}`);
+          console.error(`Please add these variables to server/.env and restart.`);
+          console.error(`===============================================================\n`);
+          process.exit(1);
+        }
+      }
+
+      let isConnected = false;
+      let retryTimer = null;
+
+      const checkBlockchainConnection = async () => {
+        try {
+          blockchainService.reloadContract();
+          if (!blockchainService.provider) {
+            throw new Error(`Blockchain provider is not configured for network "${activeNetwork}".`);
           }
-        }).catch(err => {
-          console.warn(`WARNING: Failed to check contract code at ${address} (${err.message})`);
-        });
-      }).catch((err) => {
-        console.warn(`WARNING: Blockchain is unreachable. Smart contract functions will fail! (${err.message})`);
-      });
+
+          const network = await blockchainService.provider.getNetwork();
+          const address = blockchainService.getContractAddress();
+
+          if (!isConnected) {
+            console.log(`Blockchain connected: ${network.name} [${activeNetwork}] via ${blockchainService.getMaskedRpcUrl()}`);
+            isConnected = true;
+          }
+
+          if (retryTimer) {
+            clearInterval(retryTimer);
+            retryTimer = null;
+          }
+
+          if (!address) {
+            console.warn(`WARNING: No smart contract address configured. Run deployment script first.`);
+            return;
+          }
+
+          const code = await blockchainService.provider.getCode(address);
+          if (code === '0x') {
+            console.warn(`WARNING: No contract code found at address ${address} on network "${activeNetwork}". Please deploy contract.`);
+          } else {
+            console.log(`Smart contract verified at ${address} on ${activeNetwork}`);
+          }
+        } catch (err) {
+          isConnected = false;
+          console.warn(`WARNING: Blockchain is unreachable on network "${activeNetwork}". (${err.message}). Retrying in 10s...`);
+          if (!retryTimer) {
+            retryTimer = setInterval(checkBlockchainConnection, 10000);
+          }
+        }
+      };
+
+      checkBlockchainConnection();
     }).catch(err => {
       console.warn(`WARNING: Failed to load blockchain service. (${err.message})`);
     });

@@ -4,54 +4,32 @@ A privacy-preserving, role-based Electronic Health Record (EHR) platform featuri
 
 ---
 
-## Daily Start-up Steps
+## Daily Start
 
-When developing locally, the Hardhat blockchain node runs in-memory. Every restart of the Hardhat node resets the blockchain state. To ensure records remain verified and recovery is seamless, follow these daily start-up steps:
+After a laptop restart, the project works by running only these three commands across three terminal windows:
 
-### 1. Start the Blockchain Node & Auto-Deploy Contract
-Open a dedicated terminal and run:
-```bash
-npm run chain:start
-```
-*(Or from the `blockchain/` directory: `cd blockchain && npm run chain:start`)*
+1. **Blockchain Terminal**:
+   ```bash
+   npm run chain:start
+   ```
+   *(Or from `blockchain/`: `cd blockchain && npm run chain:start`)*  
+   Spawns the local Hardhat node on `127.0.0.1:8545`, waits until it responds, deploys the smart contract, updates `server/.env.blockchain`, and executes the safe record re-anchoring routine. Keep this terminal open!
 
-**What this does automatically:**
-- Spawns the local Hardhat node on `127.0.0.1:8545`.
-- Polls the node until it responds to JSON-RPC requests (`eth_blockNumber`).
-- Deploys the `RecordIntegrity` smart contract to the local network.
-- Automatically writes the active contract address to `server/.env.blockchain`.
-- Runs the server re-anchoring routine (`reanchorRecords.js`) to re-anchor existing patient records.
-- Keeps the Hardhat node running. Keep this terminal open during development!
+2. **Server Terminal**:
+   ```bash
+   npm run dev
+   ```
+   *(Run from the `server/` directory: `cd server && npm run dev`)*  
+   Starts the backend API server. If the blockchain node is still starting up, the server logs a warning, retries the connection every 10 seconds, and shows the blockchain as down in System Health until connected without crashing.
 
----
+3. **Client Terminal**:
+   ```bash
+   npm run dev
+   ```
+   *(Run from the `client/` directory: `cd client && npm run dev`)*  
+   Starts the Vite development server for the web interface at `http://localhost:5173`.
 
-### 2. Start the Backend API Server
-Open a second terminal and run:
-```bash
-npm run dev:server
-```
-*(Or from the `server/` directory: `cd server && npm run dev`)*
-
-**What happens on startup:**
-- Connects to MongoDB (`mongodb://127.0.0.1:27017/secure-medical-records`).
-- Verifies smart contract connectivity.
-- Compares stored contract address with active one. If the chain was reset while the server was down, it logs:
-  ```text
-  Chain was reset
-  ```
-  and flags the status for the Admin System Health panel.
-
----
-
-### 3. Start the Frontend Client
-Open a third terminal and run:
-```bash
-npm run dev:client
-```
-*(Or from the `client/` directory: `cd client && npm run dev`)*
-
-The client web interface will be available at:
-`http://localhost:5173`
+> **Shortcut from root**: After `npm run chain:start` is running in Terminal 1, running `npm run dev` from the project root starts both the server and client concurrently.
 
 ---
 
@@ -60,6 +38,56 @@ Once the blockchain node is running in Terminal 1, you can start both the server
 ```bash
 npm run dev
 ```
+
+---
+
+## Dual-Network Architecture: Local Hardhat vs. Sepolia Testnet
+
+The system supports two network operational modes: **Local Hardhat (In-Memory)** for fast offline development and **Ethereum Sepolia Testnet** for public cryptographic verification.
+
+### 1. Local Hardhat Mode (Default)
+Local development works exactly as before with zero external dependencies:
+- **Blockchain terminal**: `npm run chain:start` (starts local node on `127.0.0.1:8545`, deploys contract, and re-anchors records).
+- **Server configuration**: Default `CHAIN_NETWORK=hardhat` in `server/.env`.
+- **Anchor speed**: Instant (1-second local block mining).
+
+### 2. Sepolia Testnet Mode
+
+#### Security & Secrets Policy
+- **Secrets Isolation**: Sepolia credentials live **only** in `blockchain/.env` and `server/.env`. They are **never** copied into `client/.env` or bundled into frontend assets.
+- **Variable Names in `server/.env`**:
+  ```env
+  CHAIN_NETWORK=sepolia
+  SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/your_alchemy_api_key_here
+  DEPLOYER_PRIVATE_KEY=your_sepolia_deployer_private_key_here
+  ```
+- **Redaction**: Private keys and full RPC URLs (which contain API keys) are masked at runtime and never printed or committed.
+
+#### Deployment to Sepolia
+1. Configure `blockchain/.env`:
+   ```env
+   SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/your_alchemy_api_key_here
+   DEPLOYER_PRIVATE_KEY=your_sepolia_deployer_private_key_without_quotes
+   ```
+2. Run the Sepolia deployment script:
+   ```bash
+   npm run deploy:sepolia
+   ```
+   *(Or from the `blockchain/` directory: `cd blockchain && npm run deploy:sepolia`)*
+3. **What `deploy:sepolia` does**:
+   - Inspects the deployer wallet address and verifies its Sepolia ETH balance (refuses deployment if balance is 0 ETH).
+   - Deploys the `RecordIntegrity` contract to Sepolia.
+   - Waits for 2 block confirmations for chain finality.
+   - Automatically writes `SMART_CONTRACT_ADDRESS` and `CHAIN_NETWORK=sepolia` to `server/.env.blockchain`.
+4. Configure `server/.env` with `CHAIN_NETWORK=sepolia` and the same `SEPOLIA_RPC_URL` and `DEPLOYER_PRIVATE_KEY`.
+5. Start or restart the server (`npm run dev:server`).
+
+#### Sepolia-Optimized Features
+- **Non-blocking Anchoring (10–15s Block Times)**: HTTP requests during record creation and editing return immediately (< 50ms) with `PENDING_ANCHOR` status. The transaction is submitted asynchronously by the background queue, saving the `txHash` to MongoDB the moment it is broadcast into the mempool so users can immediately track it on Etherscan.
+- **Etherscan Deep Links**: In Sepolia mode, all transaction hashes and contract addresses in the client UI (Record Details, Patient Records, and Admin System Health) render as direct external links to `https://sepolia.etherscan.io/tx/<hash>` and `https://sepolia.etherscan.io/address/<address>` (`target="_blank" rel="noopener noreferrer"`).
+- **Network Tracking & `CHAIN_MISMATCH`**: Each version stores its origin `network` (e.g., `hardhat` or `sepolia`). If the server switches networks, records from the other chain display `CHAIN_MISMATCH` with `"Anchored on hardhat, re-anchor to fix"`.
+- **System Health Signer & Rate Limit Warnings**: The System Health panel displays the active network badge, latest block number, shortened signer address, signer balance, an amber warning if the balance drops below 0.05 ETH, and explicit diagnostics if the RPC key is invalid or rate limited.
+- **Safe Re-anchoring (`--dry-run` & Rate Limits)**: The re-anchor routine verifies SHA-256 integrity against the stored fingerprint first (flagging tampered records rather than anchoring them) and applies inter-batch delays to respect RPC limits. Supports `--dry-run` to preview actions before sending transactions.
 
 ---
 
