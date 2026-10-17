@@ -3,6 +3,7 @@ import AuditLog from '../models/AuditLog.js';
 import { logAudit } from '../utils/auditHelper.js';
 import DoctorProfile from '../models/DoctorProfile.js';
 import Notification from '../models/Notification.js';
+import { createNotification } from '../utils/notifyHelper.js';
 
 // @desc    Doctor requests access to patient records
 // @route   POST /api/access/request
@@ -29,18 +30,52 @@ export const requestAccess = async (req, res) => {
       existingRequest.requestedAt = Date.now();
       await existingRequest.save();
       
-      await logAudit(req, { actor: doctorId, role: 'DOCTOR', action: 'RE_REQUEST_ACCESS', resourceType: 'AccessRequest', resourceId: existingRequest._id, relatedPatient: patientId });
+      await logAudit(req, { 
+        actor: doctorId, 
+        role: 'DOCTOR', 
+        action: 'RE_REQUEST_ACCESS', 
+        resourceType: 'AccessRequest', 
+        resourceId: existingRequest._id, 
+        resourceLabel: `Access request #${existingRequest._id.toString().slice(-6)}`,
+        relatedPatient: patientId 
+      });
       
-      await Notification.create({ user: patientId, type: 'ACCESS_REQUEST', message: 'A doctor has requested access to your records.', relatedId: existingRequest._id });
+      try {
+        await createNotification({
+          user: patientId,
+          type: 'ACCESS_REQUEST',
+          message: 'A doctor has requested access to your records.',
+          relatedId: existingRequest._id
+        });
+      } catch (notifErr) {
+        console.warn('[NOTIFICATION WARNING] Failed to send re-request notification:', notifErr.message);
+      }
       
       return res.status(200).json(existingRequest);
     }
 
     // 3. Create new request
     const newRequest = await AccessRequest.create({ patient: patientId, doctor: doctorId });
-    await logAudit(req, { actor: doctorId, role: 'DOCTOR', action: 'REQUEST_ACCESS', resourceType: 'AccessRequest', resourceId: newRequest._id, relatedPatient: patientId });
+    await logAudit(req, { 
+      actor: doctorId, 
+      role: 'DOCTOR', 
+      action: 'REQUEST_ACCESS', 
+      resourceType: 'AccessRequest', 
+      resourceId: newRequest._id, 
+      resourceLabel: `Access request #${newRequest._id.toString().slice(-6)}`,
+      relatedPatient: patientId 
+    });
 
-    await Notification.create({ user: patientId, type: 'ACCESS_REQUEST', message: 'A doctor has requested access to your records.', relatedId: newRequest._id });
+    try {
+      await createNotification({
+        user: patientId,
+        type: 'ACCESS_REQUEST',
+        message: 'A doctor has requested access to your records.',
+        relatedId: newRequest._id
+      });
+    } catch (notifErr) {
+      console.warn('[NOTIFICATION WARNING] Failed to send request notification:', notifErr.message);
+    }
 
     res.status(201).json(newRequest);
   } catch (error) {
@@ -71,9 +106,26 @@ export const respondToRequest = async (req, res) => {
     request.respondedAt = Date.now();
     await request.save();
 
-    await logAudit(req, { actor: req.user._id, role: 'PATIENT', action: `ACCESS_${status}`, resourceType: 'AccessRequest', resourceId: request._id, relatedPatient: req.user._id });
+    await logAudit(req, { 
+      actor: req.user._id, 
+      role: 'PATIENT', 
+      action: `ACCESS_${status}`, 
+      resourceType: 'AccessRequest', 
+      resourceId: request._id, 
+      resourceLabel: `Access request #${request._id.toString().slice(-6)}`,
+      relatedPatient: req.user._id 
+    });
 
-    await Notification.create({ user: request.doctor, type: `ACCESS_${status}`, message: `Your access request was ${status.toLowerCase()}.`, relatedId: request._id });
+    try {
+      await createNotification({
+        user: request.doctor,
+        type: `ACCESS_${status}`,
+        message: `Your access request was ${status.toLowerCase()}.`,
+        relatedId: request._id
+      });
+    } catch (notifErr) {
+      console.warn('[NOTIFICATION WARNING] Failed to send access response notification:', notifErr.message);
+    }
 
     res.json(request);
   } catch (error) {
@@ -93,9 +145,26 @@ export const revokeAccess = async (req, res) => {
     request.respondedAt = Date.now();
     await request.save();
 
-    await logAudit(req, { actor: req.user._id, role: 'PATIENT', action: 'ACCESS_REVOKED', resourceType: 'AccessRequest', resourceId: request._id, relatedPatient: req.user._id });
+    await logAudit(req, { 
+      actor: req.user._id, 
+      role: 'PATIENT', 
+      action: 'ACCESS_REVOKED', 
+      resourceType: 'AccessRequest', 
+      resourceId: request._id, 
+      resourceLabel: `Access request #${request._id.toString().slice(-6)}`,
+      relatedPatient: req.user._id 
+    });
 
-    await Notification.create({ user: request.doctor, type: 'ACCESS_REVOKED', message: 'Your access to a patient has been revoked.', relatedId: request._id });
+    try {
+      await createNotification({
+        user: request.doctor,
+        type: 'ACCESS_REVOKED',
+        message: 'Your access to a patient has been revoked.',
+        relatedId: request._id
+      });
+    } catch (notifErr) {
+      console.warn('[NOTIFICATION WARNING] Failed to send access revoked notification:', notifErr.message);
+    }
 
     res.json({ message: 'Access revoked successfully', request });
   } catch (error) {

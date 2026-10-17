@@ -5,14 +5,27 @@ import path from 'path';
 
 // Load base env vars
 dotenv.config();
+const envCandidates = [
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(process.cwd(), 'server/.env'),
+  path.resolve(process.cwd(), '../server/.env')
+];
+for (const p of envCandidates) {
+  if (fs.existsSync(p)) {
+    dotenv.config({ path: p });
+  }
+}
 
 // Hardhat default local RPC URL
 const RPC_URL = process.env.BLOCKCHAIN_RPC_URL || 'http://127.0.0.1:8545';
 
+// Hardhat Test Account #0 default private key
+const DEFAULT_HARDHAT_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+
 // We use Hardhat Test Account #0 as the "System Wallet" to handle transactions securely on behalf of doctors
 let PRIVATE_KEY = process.env.SYSTEM_WALLET_PRIVATE_KEY;
 if (!PRIVATE_KEY || PRIVATE_KEY === 'your_hardhat_test_account_private_key_here') {
-  throw new Error('SYSTEM_WALLET_PRIVATE_KEY is not defined in .env');
+  PRIVATE_KEY = DEFAULT_HARDHAT_KEY;
 }
 
 // The address from our deployment script
@@ -38,24 +51,62 @@ class BlockchainService {
   constructor() {
     this.provider = new ethers.JsonRpcProvider(RPC_URL);
     this.wallet = new ethers.Wallet(PRIVATE_KEY, this.provider);
-    this.contract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, this.wallet);
+    this.reloadContract();
+  }
+
+  reloadContract() {
+    try {
+      const candidates = [
+        path.resolve(process.cwd(), '.env.blockchain'),
+        path.resolve(process.cwd(), 'server/.env.blockchain'),
+        path.resolve(process.cwd(), '../server/.env.blockchain')
+      ];
+      for (const p of candidates) {
+        if (fs.existsSync(p)) {
+          const content = fs.readFileSync(p, 'utf8');
+          const match = content.match(/SMART_CONTRACT_ADDRESS=(0x[a-fA-F0-9]{40})/);
+          if (match && match[1]) {
+            CONTRACT_ADDRESS = match[1];
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Could not reload .env.blockchain:", e.message);
+    }
+    if (CONTRACT_ADDRESS && CONTRACT_ADDRESS !== 'your_deployed_contract_address_here') {
+      this.contract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, this.wallet);
+    }
+    return CONTRACT_ADDRESS;
   }
 
   async storeHash(recordId, hash) {
-    try {
-      const tx = await this.contract.addRecordHash(recordId.toString(), hash);
-      const receipt = await tx.wait(); 
-      
-      return {
-        txHash: receipt.hash,
-        blockNumber: receipt.blockNumber,
-        contractAddress: CONTRACT_ADDRESS,
-        network: 'Local Hardhat'
-      };
-    } catch (error) {
-      console.error('Blockchain store error:', error);
-      throw new Error('Failed to anchor record to blockchain');
+    let lastError = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const nonce = await this.wallet.getNonce('pending');
+        const tx = await this.contract.addRecordHash(recordId.toString(), hash, { nonce });
+        const receipt = await tx.wait(); 
+        
+        return {
+          txHash: receipt.hash,
+          blockNumber: receipt.blockNumber,
+          contractAddress: CONTRACT_ADDRESS,
+          network: 'Local Hardhat'
+        };
+      } catch (error) {
+        lastError = error;
+        const msg = error?.message || '';
+        if (error.code === 'NONCE_EXPIRED' || msg.includes('Nonce too low') || msg.includes('nonce')) {
+          await new Promise(r => setTimeout(r, 250));
+          continue;
+        }
+        console.error('Blockchain store error:', error);
+        throw new Error('Failed to anchor record to blockchain');
+      }
     }
+    console.error('Blockchain store error after retries:', lastError);
+    throw new Error('Failed to anchor record to blockchain');
   }
 
   async verifyHash(recordId, currentHash) {
@@ -96,6 +147,7 @@ class BlockchainService {
   }
   
   getContractAddress() {
+    this.reloadContract();
     return CONTRACT_ADDRESS;
   }
 }

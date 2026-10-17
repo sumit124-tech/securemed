@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getDashboardPath } from '../utils/navigation';
 import api from '../api/axios';
 import { 
   Shield, 
@@ -106,13 +107,7 @@ const Layout = () => {
       return;
     }
 
-    if (user.role === 'PATIENT') {
-      navigate('/patient-dashboard');
-    } else if (user.role === 'DOCTOR') {
-      navigate('/doctor-dashboard');
-    } else {
-      navigate('/admin-dashboard');
-    }
+    navigate(getDashboardPath(user.role));
   };
 
   const getRelativeTime = (date) => {
@@ -161,7 +156,7 @@ const Layout = () => {
         
         <nav className="sidebar-nav">
           <NavLink 
-            to={user.role === 'DOCTOR' ? '/doctor-dashboard' : user.role === 'ADMIN' ? '/admin-dashboard' : '/patient-dashboard'} 
+            to={getDashboardPath(user?.role)} 
             className={({isActive}) => isActive ? "sidebar-link active" : "sidebar-link"}
             end
             onClick={() => window.innerWidth <= 1024 && closeSidebar()}

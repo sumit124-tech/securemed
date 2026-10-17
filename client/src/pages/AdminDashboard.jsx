@@ -71,6 +71,8 @@ const AdminDashboard = () => {
   const [healthError, setHealthError] = useState('');
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [healthExpanded, setHealthExpanded] = useState(false); // Collapsible panel state
+  const [reanchoring, setReanchoring] = useState(false);
+  const [reanchorResult, setReanchorResult] = useState(null);
 
   // Ref for smooth scrolling to Doctor Verifications section
   const doctorVerificationsRef = useRef(null);
@@ -134,6 +136,25 @@ const AdminDashboard = () => {
     } finally {
       if (isInitial) setHealthLoading(false);
       setHealthRefreshing(false);
+    }
+  };
+
+  const handleReanchor = async () => {
+    try {
+      setReanchoring(true);
+      setReanchorResult(null);
+      const res = await api.post('/admin/reanchor');
+      if (res.data?.success) {
+        toast.success(`Records re-anchored successfully! (${res.data.data.reanchored} re-anchored, ${res.data.data.tampered} tampered)`);
+        setReanchorResult(res.data.data);
+        await Promise.all([fetchHealth(false), fetchStats()]);
+      }
+    } catch (err) {
+      console.error('Re-anchor failed:', err);
+      const msg = err.response?.data?.message || err.message || 'Failed to re-anchor records';
+      toast.error(`Re-anchor error: ${msg}`);
+    } finally {
+      setReanchoring(false);
     }
   };
 
@@ -761,25 +782,33 @@ const AdminDashboard = () => {
               </p>
             </div>
           ) : (
-            <div className="table-container">
-              <table>
+            <div className="table-container" style={{ overflowX: 'auto', width: '100%', maxWidth: '100%' }}>
+              <table style={{ width: '100%', minWidth: '760px', tableLayout: 'fixed', borderCollapse: 'collapse' }}>
+                <colgroup>
+                  <col style={{ width: '20%' }} />
+                  <col style={{ width: '22%' }} />
+                  <col style={{ width: '16%' }} />
+                  <col style={{ width: '18%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '12%' }} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Doctor Name</th>
-                    <th>Email</th>
-                    <th>License Number</th>
+                    <th style={{ width: '20%', padding: '0.75rem 1rem', textAlign: 'left' }}>Doctor Name</th>
+                    <th style={{ width: '22%', padding: '0.75rem 1rem', textAlign: 'left' }}>Email</th>
+                    <th style={{ width: '16%', padding: '0.75rem 1rem', textAlign: 'left' }}>License Number</th>
                     {activeTab === 'REJECTED' ? (
                       <>
-                        <th>Rejection Reason</th>
-                        <th>Rejected On</th>
+                        <th style={{ width: '18%', padding: '0.75rem 1rem', textAlign: 'left' }}>Rejection Reason</th>
+                        <th style={{ width: '12%', padding: '0.75rem 1rem', textAlign: 'left' }}>Rejected On</th>
                       </>
                     ) : (
                       <>
-                        <th>Specialty</th>
-                        <th>Status</th>
+                        <th style={{ width: '18%', padding: '0.75rem 1rem', textAlign: 'left' }}>Specialty</th>
+                        <th style={{ width: '12%', padding: '0.75rem 1rem', textAlign: 'left' }}>Status</th>
                       </>
                     )}
-                    <th style={{ textAlign: 'right' }}>Actions</th>
+                    <th style={{ width: '12%', padding: '0.75rem 1rem', textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -796,17 +825,21 @@ const AdminDashboard = () => {
 
                     return (
                       <tr key={doc._id}>
-                        <td>
-                          <strong style={{ color: 'var(--text-main)' }}>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'left', overflow: 'hidden' }}>
+                          <strong style={{ color: 'var(--text-main)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`Dr. ${doc.firstName || doc.user?.firstName || '—'} ${doc.lastName || doc.user?.lastName || ''}`}>
                             Dr. {doc.firstName || doc.user?.firstName || '—'} {doc.lastName || doc.user?.lastName || ''}
                           </strong>
                         </td>
-                        <td>{doc.user?.email || '—'}</td>
-                        <td style={{ fontFamily: 'monospace' }}>{doc.licenseNumber || '—'}</td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={doc.user?.email || '—'}>
+                          {doc.user?.email || '—'}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'left', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {doc.licenseNumber || '—'}
+                        </td>
                         
                         {activeTab === 'REJECTED' ? (
                           <>
-                            <td style={{ maxWidth: '260px' }}>
+                            <td style={{ padding: '0.75rem 1rem', textAlign: 'left', overflow: 'hidden' }}>
                               <span 
                                 style={{
                                   display: 'inline-block',
@@ -816,20 +849,23 @@ const AdminDashboard = () => {
                                   padding: '0.25rem 0.5rem',
                                   borderRadius: '6px',
                                   lineHeight: 1.35,
-                                  wordBreak: 'break-word'
+                                  wordBreak: 'break-word',
+                                  maxWidth: '100%'
                                 }}
                               >
                                 {doc.rejectionReason || '—'}
                               </span>
                             </td>
-                            <td style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                            <td style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.825rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                               {rejectedDateStr}
                             </td>
                           </>
                         ) : (
                           <>
-                            <td>{doc.specialization || doc.specialty || 'General'}</td>
-                            <td>
+                            <td style={{ padding: '0.75rem 1rem', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {doc.specialization || doc.specialty || 'General'}
+                            </td>
+                            <td style={{ padding: '0.75rem 1rem', textAlign: 'left' }}>
                               <span className={`badge badge-${isVerified ? 'success' : isRejected ? 'danger' : 'warning'}`}>
                                 {isVerified ? 'VERIFIED' : isRejected ? 'REJECTED' : 'PENDING'}
                               </span>
@@ -837,7 +873,7 @@ const AdminDashboard = () => {
                           </>
                         )}
 
-                        <td style={{ textAlign: 'right' }}>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
                           {isRejected ? (
                             /* Rejected Doctors: Show ONLY Re-verify button (Hide Reject) */
                             <button 
@@ -965,80 +1001,143 @@ const AdminDashboard = () => {
                       fontSize: '0.7rem', 
                       padding: '0.1rem 0.5rem', 
                       borderRadius: '999px',
-                      background: health.server?.status === 'up' && health.mongodb?.status === 'up' && health.blockchain?.status === 'up' 
-                        ? 'rgba(16, 185, 129, 0.12)' 
-                        : 'rgba(245, 158, 11, 0.12)',
-                      color: health.server?.status === 'up' && health.mongodb?.status === 'up' && health.blockchain?.status === 'up'
+                      background: health.server?.status === 'up' && health.mongodb?.status === 'up' && health.blockchain?.status === 'up' && !health.blockchain?.chainReset
+                      ? 'rgba(16, 185, 129, 0.12)' 
+                      : 'rgba(245, 158, 11, 0.12)',
+                    color: health.server?.status === 'up' && health.mongodb?.status === 'up' && health.blockchain?.status === 'up' && !health.blockchain?.chainReset
+                      ? 'var(--success)'
+                      : 'var(--warning)',
+                    fontWeight: 600
+                  }}
+                >
+                  <span 
+                    style={{ 
+                      width: '6px', 
+                      height: '6px', 
+                      borderRadius: '50%', 
+                      background: health.server?.status === 'up' && health.mongodb?.status === 'up' && health.blockchain?.status === 'up' && !health.blockchain?.chainReset
                         ? 'var(--success)'
-                        : 'var(--warning)',
-                      fontWeight: 600
-                    }}
-                  >
-                    <span 
-                      style={{ 
-                        width: '6px', 
-                        height: '6px', 
-                        borderRadius: '50%', 
-                        background: health.server?.status === 'up' && health.mongodb?.status === 'up' && health.blockchain?.status === 'up'
-                          ? 'var(--success)'
-                          : 'var(--warning)'
-                      }} 
-                    />
-                    {health.server?.status === 'up' && health.mongodb?.status === 'up' && health.blockchain?.status === 'up'
-                      ? 'All Systems Operational'
-                      : 'Issues Detected'}
-                  </span>
-                )}
-                {healthExpanded ? <ChevronUp size={16} color="var(--text-muted)" /> : <ChevronDown size={16} color="var(--text-muted)" />}
-              </div>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '2px' }}>
-                <Clock size={12} />
-                {health?.checkedAt ? (
-                  <>Last checked: {new Date(health.checkedAt).toLocaleTimeString()} • Click to {healthExpanded ? 'collapse' : 'expand details'}</>
-                ) : (
-                  <>Auto-refreshes every 30s • Click to {healthExpanded ? 'collapse' : 'expand details'}</>
-                )}
-              </span>
+                        : 'var(--warning)'
+                    }} 
+                  />
+                  {health.server?.status === 'up' && health.mongodb?.status === 'up' && health.blockchain?.status === 'up' && !health.blockchain?.chainReset
+                    ? 'All Systems Operational'
+                    : health.blockchain?.chainReset
+                    ? 'Chain Reset Detected'
+                    : 'Issues Detected'}
+                </span>
+              )}
+              {healthExpanded ? <ChevronUp size={16} color="var(--text-muted)" /> : <ChevronDown size={16} color="var(--text-muted)" />}
             </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                fetchHealth(false);
-              }}
-              disabled={healthLoading || healthRefreshing}
-              className="btn btn-outline"
-              style={{
-                fontSize: '0.8rem',
-                padding: '0.35rem 0.75rem',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.4rem'
-              }}
-              title="Manually refresh health status"
-            >
-              <RefreshCw size={13} className={healthRefreshing ? 'animate-spin' : ''} />
-              {healthRefreshing ? 'Refreshing...' : 'Refresh'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setHealthExpanded(prev => !prev)}
-              className="btn btn-outline"
-              style={{
-                fontSize: '0.8rem',
-                padding: '0.35rem 0.6rem'
-              }}
-              title={healthExpanded ? 'Collapse panel' : 'Expand panel'}
-            >
-              {healthExpanded ? 'Hide' : 'Show Details'}
-            </button>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '2px' }}>
+              <Clock size={12} />
+              {health?.checkedAt ? (
+                <>Last checked: {new Date(health.checkedAt).toLocaleTimeString()} • Click to {healthExpanded ? 'collapse' : 'expand details'}</>
+              ) : (
+                <>Auto-refreshes every 30s • Click to {healthExpanded ? 'collapse' : 'expand details'}</>
+              )}
+            </span>
           </div>
         </div>
 
-        {healthExpanded && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              fetchHealth(false);
+            }}
+            disabled={healthLoading || healthRefreshing}
+            className="btn btn-outline"
+            style={{
+              fontSize: '0.8rem',
+              padding: '0.35rem 0.75rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem'
+            }}
+            title="Manually refresh health status"
+          >
+            <RefreshCw size={13} className={healthRefreshing ? 'animate-spin' : ''} />
+            {healthRefreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setHealthExpanded(prev => !prev)}
+            className="btn btn-outline"
+            style={{
+              fontSize: '0.8rem',
+              padding: '0.35rem 0.6rem'
+            }}
+            title={healthExpanded ? 'Collapse panel' : 'Expand panel'}
+          >
+            {healthExpanded ? 'Hide' : 'Show Details'}
+          </button>
+        </div>
+      </div>
+
+      {/* Chain Reset Warning Banner with Re-anchor records button */}
+      {health?.blockchain?.chainReset && (
+        <div 
+          style={{ 
+            margin: '0.75rem 1.25rem 1rem', 
+            padding: '1rem 1.25rem', 
+            background: 'rgba(245, 158, 11, 0.1)', 
+            border: '1px solid rgba(245, 158, 11, 0.35)', 
+            borderRadius: '10px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '1rem',
+            flexWrap: 'wrap'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', minWidth: '280px', flex: 1 }}>
+            <AlertTriangle size={22} style={{ color: '#D97706', flexShrink: 0, marginTop: '2px' }} />
+            <div>
+              <strong style={{ display: 'block', fontSize: '0.95rem', color: '#92400E', marginBottom: '2px' }}>
+                Chain was reset
+              </strong>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: '#B45309', lineHeight: 1.4 }}>
+                {health.blockchain.chainResetWarning || 'The blockchain network was restarted or the contract address changed. Records in the database need to be re-anchored to the active contract to restore verification.'}
+              </p>
+              {reanchorResult && (
+                <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--success)', fontWeight: 600 }}>
+                  Re-anchored: {reanchorResult.reanchored} • Tampered: {reanchorResult.tampered} • Skipped: {reanchorResult.skipped} • Errors: {reanchorResult.errors}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleReanchor}
+            disabled={reanchoring || health?.blockchain?.status === 'down'}
+            className="btn btn-warning"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              padding: '0.55rem 1.15rem',
+              borderRadius: '8px',
+              background: '#D97706',
+              color: '#FFFFFF',
+              border: 'none',
+              cursor: (reanchoring || health?.blockchain?.status === 'down') ? 'not-allowed' : 'pointer',
+              opacity: (reanchoring || health?.blockchain?.status === 'down') ? 0.7 : 1,
+              boxShadow: '0 2px 4px rgba(217, 119, 6, 0.3)'
+            }}
+            title={health?.blockchain?.status === 'down' ? 'Blockchain node must be running to re-anchor' : 'Re-anchor records to active contract'}
+          >
+            <RefreshCw size={16} className={reanchoring ? 'animate-spin' : ''} />
+            {reanchoring ? 'Re-anchoring records...' : 'Re-anchor records'}
+          </button>
+        </div>
+      )}
+
+      {healthExpanded && (
           healthError ? (
             <div 
               style={{ 

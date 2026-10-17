@@ -12,6 +12,9 @@ const medicalRecordSchema = new mongoose.Schema({
   recordType: { type: String, default: 'Consultation' },
   currentHash: { type: String },        // SHA-256 hash computed before saving
   blockchainTxHash: { type: String },   // Tx receipt from Hardhat
+  contractAddress: { type: String },    // Smart contract address anchored to
+  anchoredAt: { type: Date },           // Timestamp anchored to blockchain
+  verificationStatus: { type: String }, // Verification status ('VERIFIED', 'NOT_ANCHORED', 'CHAIN_MISMATCH', 'TAMPERED', etc.)
   status: { type: String, enum: ['ACTIVE', 'AMENDED', 'HISTORICAL'], default: 'ACTIVE' },
   previousVersion: { type: mongoose.Schema.Types.ObjectId, ref: 'MedicalRecord' },
   version: { type: Number, default: 1 },

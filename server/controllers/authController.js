@@ -5,6 +5,7 @@ import generateToken from '../utils/generateToken.js';
 import AuditLog from '../models/AuditLog.js';
 import { logAudit } from '../utils/auditHelper.js';
 import { notifyAdmins } from '../utils/notifyHelper.js';
+import { validateAndParseDob } from '../utils/dateValidator.js';
 
 // In-memory failed login tracking for admin logins (email -> array of timestamps)
 const failedAdminLogins = new Map();
@@ -36,10 +37,20 @@ const recordFailedLogin = async (email) => {
 // @desc    Register new user
 // @route   POST /api/auth/register
 export const registerUser = async (req, res) => {
-  const { email, password, role, firstName, lastName, ...profileData } = req.body;
+  const { email, password, role, firstName, lastName, dob, ...profileData } = req.body;
   if (!email || !password || !role || !firstName || !lastName) {
     return res.status(400).json({ message: 'All fields are required' });
   }
+
+  // Validate Date of Birth on the server
+  if (role === 'PATIENT' || role === 'DOCTOR') {
+    const dobValidation = validateAndParseDob(dob, role);
+    if (dobValidation.error) {
+      return res.status(400).json({ message: dobValidation.error });
+    }
+    profileData.dob = dobValidation.dobUtc;
+  }
+
   try {
     const userExists = await User.findOne({ email });
     if (userExists) return res.status(400).json({ message: 'User already exists' });
@@ -70,7 +81,18 @@ export const registerUser = async (req, res) => {
 
     // Record Audit Log
     try {
-      await logAudit(req, { actor: user._id, role, action: 'REGISTER' });
+      const regLabel = role === 'DOCTOR' 
+        ? `Doctor account: Dr. ${firstName} ${lastName}`.trim() 
+        : `Patient account: ${firstName} ${lastName}`.trim();
+
+      await logAudit(req, { 
+        actor: user._id, 
+        role, 
+        action: 'REGISTER',
+        resourceType: 'User',
+        resourceId: user._id,
+        resourceLabel: regLabel
+      });
     } catch (auditErr) {
       console.warn('[AUDIT LOG WARNING]', auditErr.message);
     }
@@ -103,7 +125,14 @@ export const loginUser = async (req, res) => {
       failedAdminLogins.delete(email.trim().toLowerCase());
 
       try {
-        await logAudit(req, { actor: user._id, role: user.role, action: 'LOGIN' });
+        await logAudit(req, { 
+          actor: user._id, 
+          role: user.role, 
+          action: 'LOGIN',
+          resourceType: 'User',
+          resourceId: user._id,
+          resourceLabel: `User account: ${user.email}`
+        });
       } catch (auditErr) {
         console.warn('[AUDIT LOG WARNING]', auditErr.message);
       }

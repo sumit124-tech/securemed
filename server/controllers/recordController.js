@@ -4,8 +4,10 @@ import AccessRequest from '../models/AccessRequest.js';
 import AuditLog from '../models/AuditLog.js';
 import { logAudit } from '../utils/auditHelper.js';
 import Notification from '../models/Notification.js';
+import { createNotification } from '../utils/notifyHelper.js';
 import { generateRecordHash } from '../utils/hashHelper.js';
 import blockchainService from '../services/blockchainService.js';
+import { verifyRecordStatus } from '../services/verificationService.js';
 import PatientProfile from '../models/PatientProfile.js';
 
 import { countAccessRequestsByDoctor } from '../utils/accessHelper.js';
@@ -75,9 +77,21 @@ export const createRecord = async (req, res) => {
     newRecord.blockchainTxHash = blockchainData.txHash;
     await newRecord.save();
 
-    await logAudit(req, { actor: doctorId, role: 'DOCTOR', action: 'CREATE_RECORD', resourceType: 'MedicalRecord', resourceId: newRecord._id, relatedPatient: patientId });
+    await logAudit(req, { 
+      actor: doctorId, 
+      role: 'DOCTOR', 
+      action: 'CREATE_RECORD', 
+      resourceType: 'MedicalRecord', 
+      resourceId: newRecord._id, 
+      resourceLabel: `Medical record #${newRecord._id.toString().slice(-6)}`,
+      relatedPatient: patientId 
+    });
 
-    await Notification.create({ user: patientId, type: 'RECORD_CREATED', message: 'A new medical record has been authored for you.', relatedId: newRecord._id });
+    try {
+      await createNotification({ user: patientId, type: 'RECORD_CREATED', message: 'A new medical record has been authored for you.', relatedId: newRecord._id });
+    } catch (notifErr) {
+      console.warn('[NOTIFICATION WARNING] Failed to send record created notification:', notifErr.message);
+    }
 
     res.status(201).json(newRecord);
   } catch (error) {
@@ -104,34 +118,22 @@ export const getPatientRecords = async (req, res) => {
 
     const records = await MedicalRecord.find({ patient: patientId, status: 'ACTIVE' }).populate('doctor', 'firstName lastName email').sort({ visitDate: -1 });
 
-    await logAudit(req, { actor: req.user._id, role: req.user.role, action: 'VIEW_RECORDS', resourceType: 'User', resourceId: patientId, relatedPatient: patientId });
+    await logAudit(req, { 
+      actor: req.user._id, 
+      role: req.user.role, 
+      action: 'VIEW_RECORDS', 
+      resourceType: 'User', 
+      resourceId: patientId, 
+      resourceLabel: 'Patient records',
+      relatedPatient: patientId 
+    });
 
     if (req.query.verify === 'true') {
        const verifiedRecords = await Promise.all(records.map(async (rec) => {
            const recordObj = rec.toObject ? rec.toObject() : rec;
-           const currentData = {
-              patient: rec.patient,
-              doctor: rec.doctor ? rec.doctor._id : rec.doctor,
-              visitDate: rec.visitDate,
-              symptoms: rec.symptoms,
-              diagnosis: rec.diagnosis,
-              treatment: rec.treatment,
-              prescription: rec.prescription,
-           };
-           const calculatedHash = generateRecordHash(currentData);
-           let isVerified = false;
-           let onChainData = null;
-           let status = 'TAMPERED';
-           try {
-             isVerified = await blockchainService.verifyHash(rec._id, calculatedHash);
-             onChainData = await blockchainService.getRecordHistory(rec._id);
-             if (isVerified) status = 'VERIFIED';
-           } catch(e) {
-             if (e.message === 'BLOCKCHAIN_UNREACHABLE') status = 'BLOCKCHAIN_UNREACHABLE';
-             else if (e.message === 'CONTRACT_NOT_DEPLOYED') status = 'CONTRACT_NOT_DEPLOYED';
-             else if (e.message === 'NOT_ANCHORED') status = 'NOT_ANCHORED';
-           }
-           if (status === 'TAMPERED') {
+           const statusResult = await verifyRecordStatus(rec);
+
+           if (statusResult.status === 'TAMPERED') {
              const tenMinsAgo = new Date(Date.now() - 10 * 60 * 1000);
              const recent = await Notification.findOne({
                user: rec.patient,
@@ -140,7 +142,7 @@ export const getPatientRecords = async (req, res) => {
                createdAt: { $gte: tenMinsAgo }
              });
              if (!recent) {
-               await Notification.create({
+               await createNotification({
                  user: rec.patient,
                  type: 'INTEGRITY_CHECK_FAILED',
                  message: `Integrity check failed for record ${rec._id}. The data has been modified.`,
@@ -151,9 +153,9 @@ export const getPatientRecords = async (req, res) => {
 
            return {
                ...recordObj,
-               verificationStatus: status,
-               calculatedHash,
-               blockchainHash: onChainData ? onChainData.hash : null,
+               verificationStatus: statusResult.status,
+               calculatedHash: statusResult.calculatedHash,
+               blockchainHash: statusResult.blockchainHash,
                blockchainTxHash: rec.blockchainTxHash
            };
        }));
@@ -181,36 +183,23 @@ export const verifyRecordIntegrity = async (req, res) => {
        if (!(await hasAccess(record.patient, req.user._id))) return res.status(403).json({ message: 'Unauthorized' });
     }
 
-    // Generate hash of current DB data
-    const currentData = {
-      patient: record.patient,
-      doctor: record.doctor,
-      visitDate: record.visitDate,
-      symptoms: record.symptoms,
-      diagnosis: record.diagnosis,
-      treatment: record.treatment,
-      prescription: record.prescription,
-    };
-    const calculatedHash = generateRecordHash(currentData);
-
-    // Consult the Smart Contract
-    let isVerified = false;
-    let onChainData = null;
-    let status = 'TAMPERED';
-    try {
-      isVerified = await blockchainService.verifyHash(record._id, calculatedHash);
-      onChainData = await blockchainService.getRecordHistory(record._id);
-      status = isVerified ? 'VERIFIED' : 'TAMPERED';
-    } catch (e) {
-      if (e.message === 'BLOCKCHAIN_UNREACHABLE') status = 'BLOCKCHAIN_UNREACHABLE';
-      else if (e.message === 'CONTRACT_NOT_DEPLOYED') status = 'CONTRACT_NOT_DEPLOYED';
-      else if (e.message === 'NOT_ANCHORED') status = 'NOT_ANCHORED';
-    }
+    const statusResult = await verifyRecordStatus(record);
+    const status = statusResult.status;
+    const isVerified = statusResult.isVerified;
 
     if (status === 'VERIFIED') {
-      await logAudit(req, { actor: req.user._id, role: req.user.role, action: 'VERIFY_RECORD', resourceType: 'MedicalRecord', resourceId: record._id, relatedPatient: record.patient, forceLog: req.query.forceLog === 'true' });
+      await logAudit(req, { 
+        actor: req.user._id, 
+        role: req.user.role, 
+        action: 'VERIFY_RECORD', 
+        resourceType: 'MedicalRecord', 
+        resourceId: record._id, 
+        resourceLabel: `Medical record #${record._id.toString().slice(-6)}`,
+        relatedPatient: record.patient, 
+        forceLog: req.query.forceLog === 'true' 
+      });
       if (req.user.role === 'DOCTOR' && req.query.forceLog === 'true') {
-        await Notification.create({
+        await createNotification({
           user: req.user._id,
           type: 'RECORD_VERIFIED',
           message: `You successfully verified record ${record._id}.`,
@@ -218,7 +207,16 @@ export const verifyRecordIntegrity = async (req, res) => {
         });
       }
     } else {
-      await logAudit(req, { actor: req.user._id, role: req.user.role, action: 'VERIFY_RECORD_FAILED', resourceType: 'MedicalRecord', resourceId: record._id, relatedPatient: record.patient });
+      await logAudit(req, { 
+        actor: req.user._id, 
+        role: req.user.role, 
+        action: 'VERIFY_RECORD_FAILED', 
+        resourceType: 'MedicalRecord', 
+        resourceId: record._id, 
+        resourceLabel: `Medical record #${record._id.toString().slice(-6)}`,
+        relatedPatient: record.patient,
+        details: `Verification status: ${status}`
+      });
       
       if (status === 'TAMPERED') {
         const tenMinsAgo = new Date(Date.now() - 10 * 60 * 1000);
@@ -229,7 +227,7 @@ export const verifyRecordIntegrity = async (req, res) => {
           createdAt: { $gte: tenMinsAgo }
         });
         if (!recent) {
-          await Notification.create({
+          await createNotification({
             user: record.patient,
             type: 'INTEGRITY_CHECK_FAILED',
             message: `Integrity check failed for record ${record._id}. The data has been modified.`,
@@ -240,12 +238,13 @@ export const verifyRecordIntegrity = async (req, res) => {
     }
 
     res.json({
+      ...statusResult,
       status: status,
-      calculatedHash,
-      blockchainHash: onChainData ? onChainData.hash : null,
+      isVerified,
+      calculatedHash: statusResult.calculatedHash,
+      blockchainHash: statusResult.blockchainHash,
       blockchainTxHash: record.blockchainTxHash,
-      timestamp: onChainData ? new Date(Number(onChainData.timestamp) * 1000) : null,
-      recordData: currentData,
+      timestamp: statusResult.timestamp ? new Date(Number(statusResult.timestamp) * 1000) : null,
       createdAt: record.createdAt,
       version: record.version,
       recordStatus: record.status
@@ -311,9 +310,21 @@ export const editRecord = async (req, res) => {
     newRecord.blockchainTxHash = blockchainData.txHash;
     await newRecord.save();
 
-    await logAudit(req, { actor: doctorId, role: 'DOCTOR', action: 'EDIT_RECORD', resourceType: 'MedicalRecord', resourceId: newRecord._id, relatedPatient: oldRecord.patient });
+    await logAudit(req, { 
+      actor: doctorId, 
+      role: 'DOCTOR', 
+      action: 'EDIT_RECORD', 
+      resourceType: 'MedicalRecord', 
+      resourceId: newRecord._id, 
+      resourceLabel: `Medical record #${newRecord._id.toString().slice(-6)} (v${newRecord.version || 2})`,
+      relatedPatient: oldRecord.patient 
+    });
 
-    await Notification.create({ user: oldRecord.patient, type: 'RECORD_EDITED', message: `A new version (v${newRecord.version}) of your medical record has been authored.`, relatedId: newRecord._id });
+    try {
+      await createNotification({ user: oldRecord.patient, type: 'RECORD_EDITED', message: `A new version (v${newRecord.version}) of your medical record has been authored.`, relatedId: newRecord._id });
+    } catch (notifErr) {
+      console.warn('[NOTIFICATION WARNING] Failed to send record edited notification:', notifErr.message);
+    }
 
     res.status(201).json(newRecord);
   } catch (error) {
@@ -343,29 +354,12 @@ export const getRecordHistory = async (req, res) => {
 
     const verifiedHistory = await Promise.all(history.map(async (rec) => {
         const recordObj = rec.toObject ? rec.toObject() : rec;
-        const currentData = {
-           patient: rec.patient,
-           doctor: rec.doctor ? rec.doctor._id : rec.doctor,
-           visitDate: rec.visitDate,
-           symptoms: rec.symptoms,
-           diagnosis: rec.diagnosis,
-           treatment: rec.treatment,
-           prescription: rec.prescription,
-        };
-        const calculatedHash = generateRecordHash(currentData);
-        let isVerified = false;
-        let status = 'TAMPERED';
-        try {
-          isVerified = await blockchainService.verifyHash(rec._id, calculatedHash);
-          if (isVerified) status = 'VERIFIED';
-        } catch(e) {
-          if (e.message === 'BLOCKCHAIN_UNREACHABLE') status = 'BLOCKCHAIN_UNREACHABLE';
-          else if (e.message === 'CONTRACT_NOT_DEPLOYED') status = 'CONTRACT_NOT_DEPLOYED';
-          else if (e.message === 'NOT_ANCHORED') status = 'NOT_ANCHORED';
-        }
+        const statusResult = await verifyRecordStatus(rec);
         return {
             ...recordObj,
-            verificationStatus: status,
+            verificationStatus: statusResult.status,
+            calculatedHash: statusResult.calculatedHash,
+            blockchainHash: statusResult.blockchainHash,
             blockchainTxHash: rec.blockchainTxHash
         };
     }));

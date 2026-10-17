@@ -2,6 +2,7 @@ import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { Menu, X, Shield } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { getDashboardPath } from '../utils/navigation';
 
 const PublicLayout = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -52,7 +53,7 @@ const PublicLayout = () => {
           <div className="desktop-nav-auth" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
             {user ? (
               <>
-                <Link to={user.role === 'DOCTOR' ? '/doctor-dashboard' : '/patient-dashboard'} style={{ color: '#CBD5E1', fontWeight: 500, padding: '0.5rem 1rem', transition: 'color 0.2s' }}>Dashboard</Link>
+                <Link to={getDashboardPath(user?.role)} style={{ color: '#CBD5E1', fontWeight: 500, padding: '0.5rem 1rem', transition: 'color 0.2s' }}>Dashboard</Link>
                 <button onClick={logout} className="btn btn-primary" style={{ padding: '0.6rem 1.25rem', borderRadius: 'var(--radius-xl)', fontWeight: 600, boxShadow: 'var(--shadow-glow)', border: 'none', cursor: 'pointer' }}>Logout</button>
               </>
             ) : (
@@ -75,7 +76,7 @@ const PublicLayout = () => {
           <hr style={{ borderTop: '1px solid var(--border-light)', margin: '0.5rem 0' }} />
           {user ? (
             <>
-              <Link to={user.role === 'DOCTOR' ? '/doctor-dashboard' : '/patient-dashboard'} style={{ color: '#F8FAFC', textAlign: 'center', padding: '0.75rem' }} onClick={toggleMenu}>Dashboard</Link>
+              <Link to={getDashboardPath(user?.role)} style={{ color: '#F8FAFC', textAlign: 'center', padding: '0.75rem' }} onClick={toggleMenu}>Dashboard</Link>
               <button onClick={() => { logout(); toggleMenu(); }} className="btn btn-primary" style={{ textAlign: 'center', padding: '0.75rem', borderRadius: 'var(--radius-xl)', border: 'none', cursor: 'pointer', background: 'transparent' }}>Logout</button>
             </>
           ) : (

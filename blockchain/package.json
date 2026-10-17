@@ -1,1 +1,1 @@
-{"name": "smrs-blockchain", "version": "1.0.0", "devDependencies": {"@nomicfoundation/hardhat-toolbox": "^3.0.0", "hardhat": "^2.19.0", "ethers": "^6.8.0"}}
+{"name": "smrs-blockchain", "version": "1.0.0", "scripts": {"chain:start": "node scripts/startDev.js"}, "devDependencies": {"@nomicfoundation/hardhat-toolbox": "^3.0.0", "hardhat": "^2.19.0", "ethers": "^6.8.0"}}

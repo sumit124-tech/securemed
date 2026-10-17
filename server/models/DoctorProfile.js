@@ -4,6 +4,7 @@ const doctorProfileSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   firstName: { type: String, required: true },
   lastName: { type: String, required: true },
+  dob: { type: Date },
   specialization: { type: String, required: true },
   licenseNumber: { type: String, required: true, unique: true },
   hospitalAffiliation: { type: String },

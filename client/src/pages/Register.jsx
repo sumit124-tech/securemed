@@ -2,6 +2,14 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Shield, User, HeartPulse, AlertCircle, CheckCircle2, Activity, Mail, Lock, Eye, EyeOff, Calendar, Briefcase, Hash } from 'lucide-react';
+import { getDashboardPath } from '../utils/navigation';
+import { 
+  getTodayString, 
+  getMinDateString, 
+  calculateAge, 
+  formatDisplayDate, 
+  validateDob 
+} from '../utils/dateUtils';
 
 const initialFormState = {
   email: '',
@@ -48,16 +56,40 @@ const Register = () => {
   const { register } = useAuth();
   const navigate = useNavigate();
 
-  // Reset form when switching roles
+  // Dynamic date limits computed on each render
+  const maxDate = getTodayString();
+  const minDate = getMinDateString(120);
+
+  // Evaluate date of birth live against role
+  const dobValidation = validateDob(formData.dob, formData.role);
+  const dobDisplay = formatDisplayDate(formData.dob);
+  const activeDobError = errors.dob || (formData.dob && !dobValidation.valid ? dobValidation.error : null);
+  const isDobInvalid = !formData.dob || !dobValidation.valid;
+
+  // Handle switching between Patient and Doctor, preserving inputs and re-validating DOB
   const handleRoleChange = (newRole) => {
     if (newRole === formData.role) return;
-    setFormData({
-      ...initialFormState,
-      role: newRole
-    });
+    setFormData(prev => ({
+      ...prev,
+      role: newRole,
+      ...(newRole === 'PATIENT' ? { specialization: '', licenseNumber: '' } : {})
+    }));
     setError('');
-    setErrors({});
     setShowPassword(false);
+
+    // Re-validate DOB immediately for the newly selected role if already entered
+    if (formData.dob) {
+      const check = validateDob(formData.dob, newRole);
+      setErrors(prev => {
+        const next = { ...prev };
+        if (!check.valid) {
+          next.dob = check.error;
+        } else {
+          delete next.dob;
+        }
+        return next;
+      });
+    }
   };
 
   const handleChange = (e) => {
@@ -68,7 +100,19 @@ const Register = () => {
     }
 
     setFormData(prev => ({ ...prev, [name]: value }));
-    if (errors[name]) {
+
+    if (name === 'dob') {
+      const check = validateDob(value, formData.role);
+      setErrors(prev => {
+        const next = { ...prev };
+        if (!check.valid && value) {
+          next.dob = check.error;
+        } else {
+          delete next.dob;
+        }
+        return next;
+      });
+    } else if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: null }));
     }
   };
@@ -83,7 +127,12 @@ const Register = () => {
     if (!formData.email.trim() || !/^\S+@\S+\.\S+$/.test(formData.email.trim())) newErrors.email = "Enter a valid email address";
     if (!formData.password || formData.password.length < 6) newErrors.password = "Password must be at least 6 characters";
     
-    if (formData.role === 'PATIENT' && !formData.dob) newErrors.dob = "Enter your date of birth";
+    // Date of birth validation for both Patient and Doctor
+    const dobCheck = validateDob(formData.dob, formData.role);
+    if (!dobCheck.valid) {
+      newErrors.dob = dobCheck.error;
+    }
+
     if (formData.role === 'DOCTOR') {
       if (!formData.specialization.trim()) newErrors.specialization = "Enter your medical specialty";
       if (!formData.licenseNumber.trim()) newErrors.licenseNumber = "Enter your license number";
@@ -104,9 +153,7 @@ const Register = () => {
       setErrors({});
       setShowPassword(false);
       
-      if (user.role === 'DOCTOR') navigate('/doctor-dashboard');
-      else if (user.role === 'PATIENT') navigate('/patient-dashboard');
-      else navigate('/');
+      navigate(getDashboardPath(user.role));
     } catch (err) {
       // Keep form data on server validation error so user doesn't lose inputs
       if (!err.response) {
@@ -251,16 +298,53 @@ const Register = () => {
               {errors.password && <span className="form-error">{errors.password}</span>}
             </div>
 
-            {formData.role === 'PATIENT' && (
-              <div className="form-group">
-                <label className="form-label" htmlFor="dob">Date of Birth</label>
-                <div className="input-wrapper">
-                  <input id="dob" type="date" name="dob" autoComplete="off" className="form-control" value={formData.dob} onChange={handleChange} aria-invalid={!!errors.dob} />
-                  <Calendar className="input-icon-leading" size={18} />
-                </div>
-                {errors.dob && <span className="form-error">{errors.dob}</span>}
+            {/* Date of Birth Field (Rendered for both Patient and Doctor) */}
+            <div className="form-group">
+              <label className="form-label" htmlFor="dob">Date of Birth</label>
+              <div className="input-wrapper">
+                <input 
+                  id="dob" 
+                  type="date" 
+                  name="dob" 
+                  aria-label="Date of Birth"
+                  autoComplete="off" 
+                  className={`form-control ${activeDobError ? 'is-invalid' : formData.dob && dobValidation.valid ? 'is-valid' : ''}`} 
+                  style={{ paddingLeft: '44px' }}
+                  value={formData.dob} 
+                  onChange={handleChange} 
+                  aria-invalid={!!activeDobError} 
+                  max={maxDate}
+                  min={minDate}
+                />
+                <Calendar className="input-icon-leading" size={18} />
               </div>
-            )}
+
+              {/* Live feedback under the field */}
+              {formData.dob && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '6px', fontSize: '0.875rem', color: '#475569' }}>
+                  {dobDisplay && <span style={{ fontWeight: 500 }}>{dobDisplay}</span>}
+                  {dobValidation.age !== null && (
+                    <>
+                      <span>•</span>
+                      <span style={{ 
+                        fontWeight: 600, 
+                        color: activeDobError ? 'var(--danger, #EF4444)' : 'var(--primary, #2563EB)' 
+                      }}>
+                        Age: {dobValidation.age}
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Red error message when the rule fails */}
+              {activeDobError && (
+                <span className="form-error" style={{ color: 'var(--danger, #EF4444)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', fontSize: '0.85rem' }}>
+                  <AlertCircle size={14} />
+                  {activeDobError}
+                </span>
+              )}
+            </div>
 
             {formData.role === 'DOCTOR' && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -283,7 +367,17 @@ const Register = () => {
               </div>
             )}
 
-            <button type="submit" className="btn-submit" disabled={isLoading} style={{ marginTop: '32px' }}>
+            <button 
+              type="submit" 
+              className="btn-submit" 
+              disabled={isLoading || isDobInvalid} 
+              style={{ 
+                marginTop: '32px',
+                opacity: (isLoading || isDobInvalid) ? 0.6 : 1,
+                cursor: (isLoading || isDobInvalid) ? 'not-allowed' : 'pointer'
+              }}
+              title={isDobInvalid ? (activeDobError || 'Please provide a valid date of birth') : 'Create Account'}
+            >
               {isLoading ? (
                 <>
                   <div className="loading-spinner" style={{ width: '18px', height: '18px', borderWidth: '2px', borderColor: 'rgba(255,255,255,0.3)', borderTopColor: 'white' }}></div>

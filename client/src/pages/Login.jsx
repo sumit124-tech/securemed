@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Shield, Mail, Lock, AlertCircle, Eye, EyeOff, User, HeartPulse, CheckCircle2, FileText, Activity } from 'lucide-react';
+import { getDashboardPath } from '../utils/navigation';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -38,9 +39,7 @@ const Login = () => {
         throw new Error(`Invalid role. This account is registered as a ${user.role.toLowerCase()}.`);
       }
 
-      if (user.role === 'DOCTOR') navigate('/doctor-dashboard');
-      else if (user.role === 'PATIENT') navigate('/patient-dashboard');
-      else navigate('/');
+      navigate(getDashboardPath(user.role));
     } catch (err) {
       if (!err.response) {
         setError('Cannot reach server. Please check your connection or try again later.');

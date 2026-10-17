@@ -4,6 +4,7 @@ import { verifyRecord, getRecordHistory, editRecord } from '../api/records';
 import { ShieldCheck, ShieldAlert, FileText, Database, Key, ArrowDown, Activity, ChevronLeft, Stethoscope, RefreshCw, Edit2 } from 'lucide-react';
 import { useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { getDashboardPath } from '../utils/navigation';
 
 const RecordDetails = () => {
   const { recordId } = useParams();
@@ -66,7 +67,7 @@ const RecordDetails = () => {
         <ShieldAlert size={64} className="text-danger" style={{ marginBottom: '1rem' }} />
         <h3 className="text-danger">Verification Error</h3>
         <p>{error}</p>
-        <Link to="/" className="btn btn-primary" style={{ marginTop: '1rem' }}>Return to Dashboard</Link>
+        <Link to={getDashboardPath(user?.role)} className="btn btn-primary" style={{ marginTop: '1rem' }}>Return to Dashboard</Link>
       </div>
     );
   }
@@ -216,6 +217,12 @@ const RecordDetails = () => {
                             <span className="badge badge-success">Verified</span>
                           ) : item.verificationStatus === 'TAMPERED' ? (
                             <span className="badge badge-danger">Tampered</span>
+                          ) : item.verificationStatus === 'NOT_ANCHORED' ? (
+                            <span className="badge badge-warning">Not Anchored</span>
+                          ) : item.verificationStatus === 'CHAIN_MISMATCH' ? (
+                            <span className="badge badge-warning">Chain Mismatch</span>
+                          ) : item.verificationStatus === 'UNVERIFIABLE' ? (
+                            <span className="badge badge-warning">Unverifiable</span>
                           ) : (
                             <span className="badge badge-warning">Unverified</span>
                           )}
@@ -250,17 +257,20 @@ const RecordDetails = () => {
           <div className={`security-panel ${isTampered ? 'failed' : isWarning ? 'warning' : ''}`}>
             <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', fontSize: '1.1rem', color: isVerified ? 'var(--success)' : isTampered ? 'var(--danger)' : 'var(--warning)' }}>
               {isVerified ? <ShieldCheck size={24} /> : <ShieldAlert size={24} />}
-              {recordInfo?.status === 'BLOCKCHAIN_UNREACHABLE' ? 'BLOCKCHAIN OFFLINE' : 
+              {recordInfo?.status === 'BLOCKCHAIN_UNREACHABLE' || recordInfo?.status === 'UNVERIFIABLE' ? 'BLOCKCHAIN OFFLINE' : 
                recordInfo?.status === 'CONTRACT_NOT_DEPLOYED' ? 'CONTRACT NOT DEPLOYED' :
+               recordInfo?.status === 'CHAIN_MISMATCH' ? 'CHAIN MISMATCH' :
                recordInfo?.status === 'NOT_ANCHORED' ? 'RECORD NOT ANCHORED' :
                (isVerified ? 'INTEGRITY VERIFIED' : 'INTEGRITY WARNING')}
             </h3>
             
             <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-              {recordInfo?.status === 'BLOCKCHAIN_UNREACHABLE'
-                ? "Blockchain node offline"
+              {recordInfo?.status === 'BLOCKCHAIN_UNREACHABLE' || recordInfo?.status === 'UNVERIFIABLE'
+                ? "Blockchain node offline or unreachable."
                 : recordInfo?.status === 'CONTRACT_NOT_DEPLOYED'
                 ? "Contract not deployed at this address: redeploy and update .env.blockchain"
+                : recordInfo?.status === 'CHAIN_MISMATCH'
+                ? "Record was anchored before a chain reset. Admin can re-anchor records in System Health."
                 : recordInfo?.status === 'NOT_ANCHORED'
                 ? "Record was never anchored on this chain"
                 : (isVerified 
@@ -270,7 +280,7 @@ const RecordDetails = () => {
 
             <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', margin: 0 }}>
-                {!isVerified && !['BLOCKCHAIN_UNREACHABLE', 'CONTRACT_NOT_DEPLOYED', 'NOT_ANCHORED'].includes(recordInfo?.status) ? 'Recalculated from current data' : 'Record Fingerprint'}
+                {!isVerified && !['BLOCKCHAIN_UNREACHABLE', 'CONTRACT_NOT_DEPLOYED', 'NOT_ANCHORED', 'UNVERIFIABLE', 'CHAIN_MISMATCH'].includes(recordInfo?.status) ? 'Recalculated from current data' : 'Record Fingerprint'}
               </p>
               <button 
                 className="btn btn-outline btn-sm" 
@@ -286,11 +296,12 @@ const RecordDetails = () => {
 
             <div style={{ marginBottom: '1rem' }}>
               <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
-                {!isVerified && !['BLOCKCHAIN_UNREACHABLE', 'CONTRACT_NOT_DEPLOYED', 'NOT_ANCHORED'].includes(recordInfo?.status) ? 'Stored on blockchain (original)' : 'Verification Reference'}
+                {!isVerified && !['BLOCKCHAIN_UNREACHABLE', 'CONTRACT_NOT_DEPLOYED', 'NOT_ANCHORED', 'UNVERIFIABLE', 'CHAIN_MISMATCH'].includes(recordInfo?.status) ? 'Stored on blockchain (original)' : 'Verification Reference'}
               </p>
               <div className="crypto-data">
-                {recordInfo?.status === 'BLOCKCHAIN_UNREACHABLE' ? 'Blockchain unreachable' : 
+                {recordInfo?.status === 'BLOCKCHAIN_UNREACHABLE' || recordInfo?.status === 'UNVERIFIABLE' ? 'Blockchain unreachable' : 
                  recordInfo?.status === 'CONTRACT_NOT_DEPLOYED' ? 'Contract not deployed' :
+                 recordInfo?.status === 'CHAIN_MISMATCH' ? 'Chain mismatch (re-anchoring required)' :
                  recordInfo?.status === 'NOT_ANCHORED' ? 'Not anchored' :
                  (recordInfo?.blockchainHash || 'Not Found')}
               </div>

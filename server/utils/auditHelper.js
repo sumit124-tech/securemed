@@ -8,25 +8,50 @@ const normalizeIp = (ip) => {
   return ip;
 };
 
-export const logAudit = async (req, data) => {
+export const logAudit = async (reqOrActor, dataOrAction, resourceIdArg, reqArg, detailsArg) => {
   try {
-    const rawIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || req.socket?.remoteAddress;
+    let req, data;
+
+    // Check if called as logAudit(req, { ... }) or logAudit(null, { ... }) or legacy logAudit(actor, action, resource, req, details)
+    if (dataOrAction && typeof dataOrAction === 'object' && 'action' in dataOrAction) {
+      req = reqOrActor || {};
+      data = dataOrAction;
+    } else if (reqOrActor && typeof reqOrActor === 'object' && ('headers' in reqOrActor || 'ip' in reqOrActor || 'user' in reqOrActor)) {
+      req = reqOrActor;
+      data = dataOrAction || {};
+    } else {
+      req = reqArg || {};
+      data = {
+        actor: reqOrActor,
+        action: dataOrAction,
+        resourceId: resourceIdArg,
+        details: detailsArg
+      };
+    }
+
+    const rawIp = req?.headers?.['x-forwarded-for']?.split(',')[0]?.trim() || req?.ip || req?.socket?.remoteAddress;
     const ipAddress = normalizeIp(rawIp);
     
     // Extract forceLog and remove it from data to prevent saving it to Mongo
     const { forceLog, ...logData } = data;
 
     // Determine throttling rules
-    const nonThrottledActions = ['VERIFY_RECORD_FAILED', 'ACCESS_DENIED', 'CREATE_RECORD', 'ACCESS_APPROVED', 'ACCESS_REJECTED', 'ACCESS_REVOKED', 'REQUEST_ACCESS', 'RE_REQUEST_ACCESS', 'REGISTER', 'VERIFY_DOCTOR', 'REJECT_DOCTOR', 'ACTIVATE_USER', 'DEACTIVATE_USER'];
+    const nonThrottledActions = [
+      'VERIFY_RECORD_FAILED', 'ACCESS_DENIED', 'CREATE_RECORD', 'ACCESS_APPROVED', 
+      'ACCESS_REJECTED', 'ACCESS_REVOKED', 'REQUEST_ACCESS', 'RE_REQUEST_ACCESS', 
+      'REGISTER', 'VERIFY_DOCTOR', 'REVERIFY_DOCTOR', 'REJECT_DOCTOR', 
+      'ACTIVATE_USER', 'DEACTIVATE_USER', 'ADMIN_EXPORTED_AUDIT_LOG',
+      'RECORD_ANCHORED', 'RECORD_TAMPERING_DETECTED', 'ADMIN_REANCHORED_RECORDS'
+    ];
     
-    // Login failures aren't explicitly tracked with a separate action yet, but standard LOGIN is already somewhat throttled at 2s. We'll leave LOGIN at 2s unless it fails. Wait, prompt says: "Never throttle failures... and all state changes". We'll just bypass throttling for the nonThrottledActions.
     let timeWindowMs = 2000; // default 2 seconds deduplication
     
     if (data.action === 'VERIFY_RECORD' || data.action === 'VIEW_RECORDS') {
       timeWindowMs = 10 * 60 * 1000; // 10 minutes
     }
     
-    const isNonThrottled = nonThrottledActions.includes(data.action) || data.action.includes('FAILED') || data.action.includes('DENIED');
+    const actionStr = typeof data.action === 'string' ? data.action : '';
+    const isNonThrottled = nonThrottledActions.includes(actionStr) || actionStr.includes('FAILED') || actionStr.includes('DENIED');
 
     if (!forceLog && !isNonThrottled) {
       const timeThreshold = new Date(Date.now() - timeWindowMs);

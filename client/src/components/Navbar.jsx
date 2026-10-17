@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Shield, LogOut, User, Bell, Check, CheckCheck, ShieldAlert, Users, FileText, X, ShieldCheck } from 'lucide-react';
 import api from '../api/axios';
+import { getDashboardPath } from '../utils/navigation';
 
 const Navbar = () => {
   const { user, profile, logout } = useAuth();
@@ -104,13 +105,7 @@ const Navbar = () => {
       return;
     }
 
-    if (user.role === 'PATIENT') {
-      navigate('/patient-dashboard');
-    } else if (user.role === 'DOCTOR') {
-      navigate('/doctor-dashboard');
-    } else {
-      navigate('/admin-dashboard');
-    }
+    navigate(getDashboardPath(user.role));
   };
 
   const unreadCount = notifications.filter(n => !n.isRead).length;

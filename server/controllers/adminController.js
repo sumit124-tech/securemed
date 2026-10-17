@@ -6,8 +6,10 @@ import MedicalRecord from '../models/MedicalRecord.js';
 import Notification from '../models/Notification.js';
 import AuditLog from '../models/AuditLog.js';
 import { logAudit } from '../utils/auditHelper.js';
-import { notifyAdmins } from '../utils/notifyHelper.js';
+import { notifyAdmins, createNotification } from '../utils/notifyHelper.js';
 import blockchainService from '../services/blockchainService.js';
+import { getChainResetStatus } from '../services/chainResetService.js';
+import { reanchorRecords } from '../scripts/reanchorRecords.js';
 
 // Track last known service status in-memory to notify admins only once per outage
 const lastHealthStatus = {
@@ -109,6 +111,17 @@ export const getSystemHealth = async (req, res) => {
       lastHealthStatus.blockchain = 'up';
     }
 
+    // 4. Chain Reset Inspection
+    try {
+      const chainResetInfo = await getChainResetStatus();
+      blockchain.chainReset = chainResetInfo.isReset;
+      blockchain.chainResetWarning = chainResetInfo.warning;
+      blockchain.storedContractAddress = chainResetInfo.storedAddress;
+    } catch (crErr) {
+      blockchain.chainReset = false;
+      blockchain.chainResetWarning = null;
+    }
+
     return res.json({
       success: true,
       data: {
@@ -129,6 +142,48 @@ export const getSystemHealth = async (req, res) => {
         blockchain: { status: 'down', error: 'Failed to inspect blockchain state' },
         checkedAt: new Date().toISOString()
       }
+    });
+  }
+};
+
+// @desc    Re-anchor records to the active smart contract (Admin only)
+// @route   POST /api/admin/reanchor
+// @access  Private/Admin
+export const reanchorRecordsController = async (req, res) => {
+  try {
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(403).json({
+        success: false,
+        message: 'Re-anchoring records is not permitted in production environment.'
+      });
+    }
+
+    const summary = await reanchorRecords({ calledBy: `Admin (${req.user.email})` });
+
+    try {
+      await logAudit(req, {
+        actor: req.user._id,
+        role: 'ADMIN',
+        action: 'ADMIN_REANCHORED_RECORDS',
+        resourceType: 'SystemConfig',
+        resourceId: req.user._id,
+        resourceLabel: 'Blockchain Contract',
+        details: `Re-anchored ${summary.reanchored} records. ${summary.tampered} tampered, ${summary.skipped} skipped, ${summary.errors} errors. Contract: ${summary.contractAddress}`
+      });
+    } catch (auditError) {
+      console.warn('[AUDIT WARNING] Failed to record re-anchor audit log:', auditError.message);
+    }
+
+    return res.json({
+      success: true,
+      message: `Re-anchoring completed: ${summary.reanchored} re-anchored, ${summary.tampered} tampered, ${summary.skipped} skipped.`,
+      data: summary
+    });
+  } catch (err) {
+    console.error('Re-anchor records error:', err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || 'Failed to re-anchor records'
     });
   }
 };
@@ -383,6 +438,20 @@ export const getAdminPatients = async (req, res) => {
 
     const pages = Math.ceil(total / limit) || 1;
 
+    // Write audit log entry for admin viewing patients directory
+    try {
+      await logAudit(req, {
+        actor: req.user._id,
+        role: req.user.role,
+        action: 'ADMIN_VIEWED_PATIENTS',
+        resourceType: 'SystemReport',
+        resourceLabel: 'Patients directory',
+        details: search ? `Filtered by search: "${search}"` : 'Viewed patients directory'
+      });
+    } catch (auditErr) {
+      console.warn('[AUDIT WARNING] Failed to record ADMIN_VIEWED_PATIENTS:', auditErr.message);
+    }
+
     res.json({
       success: true,
       data: formattedPatients,
@@ -406,13 +475,14 @@ export const getRecordsOverview = async (req, res) => {
   try {
     // Write audit log entry for admin viewing records overview
     try {
-      await logAudit(
-        req.user._id,
-        'ADMIN_VIEWED_RECORDS_OVERVIEW',
-        null,
-        req,
-        'Admin accessed medical records statistical overview'
-      );
+      await logAudit(req, {
+        actor: req.user._id,
+        role: req.user.role,
+        action: 'ADMIN_VIEWED_RECORDS_OVERVIEW',
+        resourceType: 'SystemReport',
+        resourceLabel: 'Records overview',
+        details: 'Admin accessed medical records statistical overview'
+      });
     } catch (auditErr) {
       console.warn('[AUDIT WARNING] Failed to record ADMIN_VIEWED_RECORDS_OVERVIEW:', auditErr.message);
     }
@@ -616,6 +686,7 @@ export const verifyDoctor = async (req, res) => {
         action: isReverifying ? 'REVERIFY_DOCTOR' : 'VERIFY_DOCTOR',
         resourceType: 'DoctorProfile',
         resourceId: doctorProfile._id,
+        resourceLabel: `Doctor: Dr. ${doctorProfile.firstName || ''} ${doctorProfile.lastName || ''}`.trim(),
         details: auditDetails
       });
     } catch (auditError) {
@@ -635,7 +706,7 @@ export const verifyDoctor = async (req, res) => {
     try {
       const recipientId = doctorProfile.user?._id || doctorProfile.user;
       if (recipientId) {
-        await Notification.create({
+        await createNotification({
           user: recipientId,
           message: isReverifying
             ? 'Your doctor account has been re-verified. You can now request access to patient records.'
@@ -702,6 +773,7 @@ export const rejectDoctor = async (req, res) => {
         action: 'REJECT_DOCTOR',
         resourceType: 'DoctorProfile',
         resourceId: doctorProfile._id,
+        resourceLabel: `Doctor: Dr. ${doctorProfile.firstName || ''} ${doctorProfile.lastName || ''}`.trim(),
         details: `Reason: ${cleanReason}`
       });
     } catch (auditError) {
@@ -721,7 +793,7 @@ export const rejectDoctor = async (req, res) => {
     try {
       const recipientId = doctorProfile.user?._id || doctorProfile.user;
       if (recipientId) {
-        await Notification.create({
+        await createNotification({
           user: recipientId,
           message: `Your account verification has been rejected. Reason: ${cleanReason}`,
           type: 'SYSTEM'
@@ -754,3 +826,4 @@ export const rejectDoctor = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+

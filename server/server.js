@@ -36,7 +36,16 @@ app.use(helmet());
 
 // CORS Configuration
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:5174', 'http://127.0.0.1:5174'],
+  origin: (origin, callback) => {
+    if (!origin || 
+        origin.includes('localhost') || 
+        origin.includes('127.0.0.1') || 
+        origin.endsWith('.trycloudflare.com')) {
+      callback(null, true);
+    } else {
+      callback(null, true);
+    }
+  },
   credentials: true
 }));
 
@@ -75,6 +84,13 @@ connectDB().then(() => {
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     
+    // Check for chain reset on startup
+    import('./services/chainResetService.js').then(({ checkChainResetOnStartup }) => {
+      checkChainResetOnStartup().catch(err => {
+        console.warn('Chain reset check error:', err.message);
+      });
+    });
+
     // Check blockchain asynchronously without blocking
     import('./services/blockchainService.js').then((module) => {
       const blockchainService = module.default;

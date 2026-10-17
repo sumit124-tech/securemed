@@ -190,21 +190,27 @@ const AdminPatients = () => {
             </div>
           ) : (
             /* Table */
-            <div className="table-responsive">
-              <table className="table" style={{ margin: 0 }}>
+            <div className="table-container" style={{ overflowX: 'auto', width: '100%', maxWidth: '100%' }}>
+              <table style={{ width: '100%', minWidth: '600px', tableLayout: 'fixed', borderCollapse: 'collapse', margin: 0 }}>
+                <colgroup>
+                  <col style={{ width: '30%' }} />
+                  <col style={{ width: '34%' }} />
+                  <col style={{ width: '20%' }} />
+                  <col style={{ width: '16%' }} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Patient Name</th>
-                    <th>Email Address</th>
-                    <th>Registered Date</th>
-                    <th>Status</th>
+                    <th style={{ width: '30%', padding: '0.75rem 1rem', textAlign: 'left' }}>Patient Name</th>
+                    <th style={{ width: '34%', padding: '0.75rem 1rem', textAlign: 'left' }}>Email Address</th>
+                    <th style={{ width: '20%', padding: '0.75rem 1rem', textAlign: 'left' }}>Registered Date</th>
+                    <th style={{ width: '16%', padding: '0.75rem 1rem', textAlign: 'left' }}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {patients.map((patient) => (
                     <tr key={patient._id}>
-                      <td style={{ fontWeight: 600, color: 'var(--text-main)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'left', fontWeight: 600, color: 'var(--text-main)', overflow: 'hidden' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden' }}>
                           <div 
                             style={{ 
                               width: '32px', 
@@ -216,27 +222,28 @@ const AdminPatients = () => {
                               alignItems: 'center', 
                               justifyContent: 'center',
                               fontSize: '0.8rem',
-                              fontWeight: 700
+                              fontWeight: 700,
+                              flexShrink: 0
                             }}
                           >
                             {(patient.name?.[0] || 'P').toUpperCase()}
                           </div>
-                          <span>{patient.name}</span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={patient.name}>{patient.name}</span>
                         </div>
                       </td>
-                      <td>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)' }}>
-                          <Mail size={13} />
-                          {patient.email}
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'left', overflow: 'hidden' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={patient.email}>
+                          <Mail size={13} style={{ flexShrink: 0 }} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{patient.email}</span>
                         </span>
                       </td>
-                      <td>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)' }}>
-                          <Calendar size={13} />
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'left', overflow: 'hidden' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                          <Calendar size={13} style={{ flexShrink: 0 }} />
                           {patient.createdAt ? new Date(patient.createdAt).toLocaleDateString() : 'N/A'}
                         </span>
                       </td>
-                      <td>
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'left' }}>
                         <span 
                           style={{ 
                             display: 'inline-flex', 
@@ -247,7 +254,8 @@ const AdminPatients = () => {
                             fontSize: '0.75rem', 
                             fontWeight: 600,
                             background: patient.status === 'Active' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-                            color: patient.status === 'Active' ? 'var(--success)' : 'var(--danger)'
+                            color: patient.status === 'Active' ? 'var(--success)' : 'var(--danger)',
+                            whiteSpace: 'nowrap'
                           }}
                         >
                           <span 
@@ -255,7 +263,8 @@ const AdminPatients = () => {
                               width: '6px', 
                               height: '6px', 
                               borderRadius: '50%', 
-                              background: patient.status === 'Active' ? 'var(--success)' : 'var(--danger)' 
+                              background: patient.status === 'Active' ? 'var(--success)' : 'var(--danger)',
+                              flexShrink: 0
                             }} 
                           />
                           {patient.status}

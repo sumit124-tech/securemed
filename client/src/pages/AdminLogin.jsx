@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Shield, Mail, Lock, CheckCircle2, User, Activity, EyeOff, Eye } from 'lucide-react';
+import { getDashboardPath } from '../utils/navigation';
 
 const AdminLogin = () => {
   const [email, setEmail] = useState('');
@@ -37,7 +38,7 @@ const AdminLogin = () => {
         throw new Error(`Administrator access required. This account is registered as a ${user.role.toLowerCase()}.`);
       }
 
-      navigate('/admin-dashboard');
+      navigate(getDashboardPath(user.role));
     } catch (err) {
       if (err.response?.data?.message) {
         setError(err.response.data.message);

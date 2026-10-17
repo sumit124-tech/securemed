@@ -5,9 +5,11 @@ import { respondToAccess, revokeAccess, getMyRequests } from '../api/access';
 import { FileText, ShieldAlert, CheckCircle, XCircle, Clock, CheckCircle2, ShieldCheck, UserCheck, Inbox, Copy, Activity } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../api/axios';
+import { useToast } from '../context/ToastContext';
 
 const PatientDashboard = () => {
   const { user, profile } = useAuth();
+  const toast = useToast();
   
   const [records, setRecords] = useState([]);
   const [loadingRecords, setLoadingRecords] = useState(true);
@@ -86,10 +88,19 @@ const PatientDashboard = () => {
   const handleAccessResponse = async (requestId, status) => {
     if(status === 'REJECTED' && !window.confirm('Are you sure you want to reject this request?')) return;
     try {
+      const targetReq = safeRequests.find(r => r?._id === requestId);
+      const doctorName = targetReq?.lastName || targetReq?.firstName || 'Doctor';
+
       await respondToAccess(requestId, status);
       fetchRequests();
+
+      if (status === 'APPROVED') {
+        toast.success(`Access approved for Dr. ${doctorName}.`);
+      } else {
+        toast.success(`Access rejected for Dr. ${doctorName}.`);
+      }
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to update access');
+      toast.error(err.response?.data?.message || 'Failed to update access');
     }
   };
 
@@ -98,8 +109,9 @@ const PatientDashboard = () => {
     try {
       await revokeAccess(doctorId);
       fetchRequests();
+      toast.success('Access revoked successfully.');
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to revoke access');
+      toast.error(err.response?.data?.message || 'Failed to revoke access');
     }
   };
 
@@ -242,10 +254,12 @@ const PatientDashboard = () => {
                             <span className="badge badge-success"><CheckCircle2 size={12}/> Verified</span>
                           ) : record?.verificationStatus === 'TAMPERED' ? (
                             <span className="badge badge-danger"><ShieldAlert size={12}/> Tampered</span>
-                          ) : record?.verificationStatus === 'BLOCKCHAIN_UNREACHABLE' ? (
-                            <span className="badge badge-warning" title="Blockchain node offline"><ShieldAlert size={12}/> Offline</span>
+                          ) : record?.verificationStatus === 'BLOCKCHAIN_UNREACHABLE' || record?.verificationStatus === 'UNVERIFIABLE' ? (
+                            <span className="badge badge-warning" title="Blockchain node offline or unreachable"><ShieldAlert size={12}/> Offline</span>
                           ) : record?.verificationStatus === 'CONTRACT_NOT_DEPLOYED' ? (
                             <span className="badge badge-warning" title="Contract not deployed at this address"><ShieldAlert size={12}/> No Contract</span>
+                          ) : record?.verificationStatus === 'CHAIN_MISMATCH' ? (
+                            <span className="badge badge-warning" title="Anchored before chain reset: needs re-anchor"><ShieldAlert size={12}/> Chain Mismatch</span>
                           ) : record?.verificationStatus === 'NOT_ANCHORED' ? (
                             <span className="badge badge-warning" title="Record was never anchored on this chain"><ShieldAlert size={12}/> Not Anchored</span>
                           ) : (

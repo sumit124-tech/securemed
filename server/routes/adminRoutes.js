@@ -7,12 +7,14 @@ import {
   getAdminPatients, 
   getRecordsOverview,
   verifyDoctor, 
-  rejectDoctor 
+  rejectDoctor,
+  reanchorRecordsController
 } from '../controllers/adminController.js';
 
 const router = express.Router();
 
 router.get('/health', protect, authorize('ADMIN'), getSystemHealth);
+router.post('/reanchor', protect, authorize('ADMIN'), reanchorRecordsController);
 router.get('/stats', protect, authorize('ADMIN'), getAdminStats);
 router.get('/doctors', protect, authorize('ADMIN'), getUnverifiedDoctors);
 router.get('/patients', protect, authorize('ADMIN'), getAdminPatients);

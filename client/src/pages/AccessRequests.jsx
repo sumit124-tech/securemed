@@ -3,10 +3,12 @@ import { useAuth } from '../context/AuthContext';
 import { getMyRequests, respondToAccess, revokeAccess } from '../api/access';
 import { ShieldCheck, ShieldAlert, ChevronLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '../context/ToastContext';
 
 const AccessRequests = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
   
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,10 +35,19 @@ const AccessRequests = () => {
 
   const handleAccessResponse = async (requestId, status) => {
     try {
+      const targetReq = requests.find(r => r?._id === requestId);
+      const doctorName = targetReq?.lastName || targetReq?.firstName || 'Doctor';
+
       await respondToAccess(requestId, status);
       fetchRequests();
+
+      if (status === 'APPROVED') {
+        toast.success(`Access approved for Dr. ${doctorName}.`);
+      } else {
+        toast.success(`Access rejected for Dr. ${doctorName}.`);
+      }
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to update access');
+      toast.error(err.response?.data?.message || 'Failed to update access');
     }
   };
 
@@ -44,8 +55,9 @@ const AccessRequests = () => {
     try {
       await revokeAccess(doctorId);
       fetchRequests();
+      toast.success('Access revoked successfully.');
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to revoke access');
+      toast.error(err.response?.data?.message || 'Failed to revoke access');
     }
   };
 

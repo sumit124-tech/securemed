@@ -98,10 +98,12 @@ const MedicalRecords = () => {
                           <span className="badge badge-success"><CheckCircle2 size={12}/> Verified</span>
                         ) : record?.verificationStatus === 'TAMPERED' ? (
                           <span className="badge badge-danger"><ShieldAlert size={12}/> Tampered</span>
-                        ) : record?.verificationStatus === 'BLOCKCHAIN_UNREACHABLE' ? (
-                          <span className="badge badge-warning" title="Blockchain node offline"><ShieldAlert size={12}/> Offline</span>
+                        ) : record?.verificationStatus === 'BLOCKCHAIN_UNREACHABLE' || record?.verificationStatus === 'UNVERIFIABLE' ? (
+                          <span className="badge badge-warning" title="Blockchain node offline or unreachable"><ShieldAlert size={12}/> Offline</span>
                         ) : record?.verificationStatus === 'CONTRACT_NOT_DEPLOYED' ? (
                           <span className="badge badge-warning" title="Contract not deployed at this address"><ShieldAlert size={12}/> No Contract</span>
+                        ) : record?.verificationStatus === 'CHAIN_MISMATCH' ? (
+                          <span className="badge badge-warning" title="Anchored before chain reset: needs re-anchor"><ShieldAlert size={12}/> Chain Mismatch</span>
                         ) : record?.verificationStatus === 'NOT_ANCHORED' ? (
                           <span className="badge badge-warning" title="Record was never anchored on this chain"><ShieldAlert size={12}/> Not Anchored</span>
                         ) : (

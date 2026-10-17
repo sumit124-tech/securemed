@@ -92,11 +92,19 @@
   padding-right: 44px !important;
 }
 
-/* Hide native date picker indicator to use our custom Lucide icon */
+/* Date picker indicator styling */
 .field input[type="date"].form-control::-webkit-calendar-picker-indicator,
 .input-wrapper input[type="date"].form-control::-webkit-calendar-picker-indicator {
-  display: none;
-  -webkit-appearance: none;
+  cursor: pointer;
+  opacity: 0.6;
+  padding: 4px;
+  border-radius: 4px;
+  transition: opacity 150ms ease;
+}
+
+.field input[type="date"].form-control:hover::-webkit-calendar-picker-indicator,
+.input-wrapper input[type="date"].form-control:hover::-webkit-calendar-picker-indicator {
+  opacity: 1;
 }
 
 .form-control::placeholder {

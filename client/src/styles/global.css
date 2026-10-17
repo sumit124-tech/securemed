@@ -433,8 +433,11 @@ ul {
 }
 
 /* Tables */
-.table-container {
+.table-container,
+.table-responsive {
   overflow-x: auto;
+  width: 100%;
+  max-width: 100%;
 }
 table {
   width: 100%;
@@ -443,7 +446,7 @@ table {
 th {
   background: var(--bg-main);
   text-align: left;
-  padding: var(--space-3) var(--space-4);
+  padding: 0.75rem 1rem;
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -451,7 +454,7 @@ th {
   border-bottom: 1px solid var(--border-light);
 }
 td {
-  padding: var(--space-4);
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border-light);
   font-size: 0.875rem;
   color: var(--text-main);
